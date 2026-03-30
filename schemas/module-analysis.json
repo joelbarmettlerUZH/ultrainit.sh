@@ -1,0 +1,189 @@
+{
+  "type": "object",
+  "required": ["module_path", "purpose", "architecture", "key_files", "patterns", "conventions", "dependencies", "gotchas"],
+  "additionalProperties": false,
+  "properties": {
+    "module_path": {
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string",
+      "description": "2-3 sentence description of what this module does and why it exists"
+    },
+    "architecture": {
+      "type": "object",
+      "required": ["overview", "subdirectories", "data_flow"],
+      "additionalProperties": false,
+      "properties": {
+        "overview": {
+          "type": "string",
+          "description": "How this module is organized internally — layers, patterns, philosophy"
+        },
+        "subdirectories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "purpose"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "purpose": { "type": "string" },
+              "key_files": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Most important files in this subdirectory"
+              }
+            }
+          }
+        },
+        "data_flow": {
+          "type": "string",
+          "description": "How data flows through this module — entry points, transformations, outputs"
+        }
+      }
+    },
+    "key_files": {
+      "type": "array",
+      "description": "The most important files a developer should know about, with explanations",
+      "items": {
+        "type": "object",
+        "required": ["path", "purpose", "importance"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "purpose": { "type": "string" },
+          "importance": {
+            "type": "string",
+            "enum": ["critical", "important", "reference"],
+            "description": "How important it is to understand this file"
+          }
+        }
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "description": "Architectural and coding patterns used within this module",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "example_files"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of the pattern including HOW to follow it"
+          },
+          "example_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Files that exemplify this pattern"
+          }
+        }
+      }
+    },
+    "conventions": {
+      "type": "object",
+      "required": ["naming", "imports", "error_handling"],
+      "additionalProperties": false,
+      "properties": {
+        "naming": {
+          "type": "string",
+          "description": "File naming, class naming, function naming conventions specific to this module"
+        },
+        "imports": {
+          "type": "string",
+          "description": "Import style, ordering, path aliases used"
+        },
+        "error_handling": {
+          "type": "string",
+          "description": "How errors are handled — custom exceptions, error middleware, Result types"
+        },
+        "other": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Other conventions that don't fit above categories"
+        }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "required": ["internal", "external_key"],
+      "additionalProperties": false,
+      "properties": {
+        "internal": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Other modules/directories in this repo that this module depends on"
+        },
+        "external_key": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "purpose"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "purpose": { "type": "string" }
+            }
+          },
+          "description": "Key external dependencies and what they're used for"
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "purpose"],
+        "additionalProperties": false,
+        "properties": {
+          "command": { "type": "string" },
+          "purpose": { "type": "string" }
+        }
+      }
+    },
+    "gotchas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["issue", "solution"],
+        "additionalProperties": false,
+        "properties": {
+          "issue": { "type": "string", "description": "The non-obvious behavior or pitfall" },
+          "solution": { "type": "string", "description": "What to do instead or how to avoid it" }
+        }
+      },
+      "description": "Non-obvious behaviors, pitfalls, things that would trip up a developer"
+    },
+    "domain_terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["term", "meaning"],
+        "additionalProperties": false,
+        "properties": {
+          "term": { "type": "string" },
+          "meaning": { "type": "string" }
+        }
+      }
+    },
+    "skill_opportunities": {
+      "type": "array",
+      "description": "Workflows in this module that would benefit from being a Claude Code skill",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "workflow_steps"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "description": "Proposed skill name in kebab-case" },
+          "description": { "type": "string", "description": "What the skill would help with" },
+          "workflow_steps": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "High-level steps in the workflow"
+          }
+        }
+      }
+    }
+  }
+}

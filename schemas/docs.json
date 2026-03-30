@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "required": ["documents", "documented_conventions", "undocumented_gaps"],
+  "additionalProperties": false,
+  "properties": {
+    "documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "type", "summary"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["readme", "contributing", "adr", "api_docs", "architecture", "ai_config", "other"]
+          },
+          "summary": {
+            "type": "string",
+            "description": "2-sentence summary of the document"
+          }
+        }
+      }
+    },
+    "documented_conventions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Conventions that are already documented"
+    },
+    "undocumented_gaps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Important conventions that are NOT documented anywhere"
+    }
+  }
+}

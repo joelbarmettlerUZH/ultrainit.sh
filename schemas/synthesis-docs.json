@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": ["claude_md", "subdirectory_claude_mds"],
+  "additionalProperties": false,
+  "properties": {
+    "claude_md": {
+      "type": "string",
+      "description": "The full contents of the root CLAUDE.md file. Markdown format. Be comprehensive — as long as needed, every line load-bearing."
+    },
+    "subdirectory_claude_mds": {
+      "type": "array",
+      "description": "CLAUDE.md files for subdirectories with distinct conventions. Aim for 5-15 files.",
+      "items": {
+        "type": "object",
+        "required": ["path", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative directory path (e.g. 'backend', 'src/lib/components')"
+          },
+          "content": {
+            "type": "string",
+            "description": "Markdown content for this subdirectory CLAUDE.md. Self-contained, as detailed as needed."
+          }
+        }
+      }
+    }
+  }
+}

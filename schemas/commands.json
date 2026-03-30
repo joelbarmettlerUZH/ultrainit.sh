@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "required": ["build", "test", "lint", "format", "typecheck", "other"],
+  "additionalProperties": false,
+  "properties": {
+    "build": { "$ref": "#/$defs/command_list" },
+    "test": { "$ref": "#/$defs/command_list" },
+    "lint": { "$ref": "#/$defs/command_list" },
+    "format": { "$ref": "#/$defs/command_list" },
+    "typecheck": { "$ref": "#/$defs/command_list" },
+    "other": { "$ref": "#/$defs/command_list" }
+  },
+  "$defs": {
+    "command_list": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "scope", "ci_verified", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "command": { "type": "string" },
+          "scope": {
+            "type": "string",
+            "description": "project-wide or file/directory scope"
+          },
+          "ci_verified": { "type": "boolean" },
+          "source": {
+            "type": "string",
+            "description": "Where this command was found (e.g. package.json, Makefile)"
+          }
+        }
+      }
+    }
+  }
+}
