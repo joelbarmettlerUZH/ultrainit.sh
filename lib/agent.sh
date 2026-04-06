@@ -140,10 +140,12 @@ run_agents_parallel() {
         agent_name=$(echo "$agent_call" | sed -E "s/run_agent ([^ ]+).*/\1/")
         names+=("$agent_name")
 
-        # Write the call to a temp script to avoid eval quoting issues
+        # Write the call to a temp script that sources the necessary libs
         local script="$tmp_dir/agent-${idx}.sh"
         cat > "$script" <<AGENT_SCRIPT
 #!/usr/bin/env bash
+source "$SCRIPT_DIR/lib/utils.sh"
+source "$SCRIPT_DIR/lib/agent.sh"
 $agent_call
 AGENT_SCRIPT
 
