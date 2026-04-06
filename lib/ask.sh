@@ -45,8 +45,8 @@ ask_developer() {
     fi
 
     if [[ -n "$identity_desc" ]]; then
-        echo "I detected this project might be: ${identity_desc}"
-        read -rp "What is the primary purpose of this project? (Enter to accept, or type your own): " purpose <&3
+        echo "What is the primary purpose of this project?"
+        read -rp "  [${identity_desc}]: " purpose <&3
         purpose="${purpose:-$identity_desc}"
     else
         read -rp "What is the primary purpose of this project? " purpose <&3
