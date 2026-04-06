@@ -7,7 +7,7 @@
 ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ deeply analyzes your codebase and generates everything Claude Code needs to work like a senior engineer who's been on the team for months — a comprehensive CLAUDE.md, dozens of skills, hooks, subagents, and MCP server configurations.
 
 ```bash
-curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/ultrainit.sh | bash
+curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/dist/ultrainit.sh | bash
 ```
 
 No Python. No npm. No dependencies beyond `claude` and `jq`.
@@ -55,19 +55,19 @@ A typical run on a full-stack web application:
 
 ```bash
 # Analyze the current directory
-curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/ultrainit.sh | bash
+curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/dist/ultrainit.sh | bash
 
 # Analyze a specific project
-bash <(curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/ultrainit.sh) /path/to/project
+bash <(curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/dist/ultrainit.sh) /path/to/project
 
 # Non-interactive (skip developer questions, for CI)
-bash <(curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/ultrainit.sh) --non-interactive
+bash <(curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/dist/ultrainit.sh) --non-interactive
 
 # Clean re-generation: remove existing config first
-bash <(curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/ultrainit.sh) --overwrite
+bash <(curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/dist/ultrainit.sh) --overwrite
 
 # Use Opus 1M for highest-quality synthesis
-bash <(curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/ultrainit.sh) --model 'opus[1m]'
+bash <(curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit.sh/main/dist/ultrainit.sh) --model 'opus[1m]'
 ```
 
 ### CLI Options
