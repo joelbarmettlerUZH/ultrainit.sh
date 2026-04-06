@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 # lib/ask.sh — Phase 2: Interactive developer questions
 
+# Ask a question with an optional proposed answer.
+# Usage: ask_question <variable_name> <question> [proposed_answer]
+# Reads from fd 3 (set up in ask_developer).
+ask_question() {
+    local var_name="$1"
+    local question="$2"
+    local proposed="${3:-}"
+
+    echo ""
+    echo -e "${BOLD}$question${RESET}"
+    if [[ -n "$proposed" ]]; then
+        echo -e "  ${CYAN}Proposed:${RESET} $proposed"
+        read -rp "  Your answer (Enter to accept, or type your own): " answer <&3
+        answer="${answer:-$proposed}"
+    else
+        read -rp "  Your answer (Enter to skip): " answer <&3
+    fi
+
+    eval "$var_name=\$answer"
+}
+
 ask_developer() {
     log_phase "Phase 2: Developer interview"
 
@@ -21,7 +42,7 @@ ask_developer() {
     # When piped from curl, stdin is the pipe — we must read from /dev/tty
     if [[ ! -t 0 ]]; then
         if [[ -e /dev/tty ]]; then
-            exec 3</dev/tty  # open fd 3 from tty
+            exec 3</dev/tty
         else
             log_warn "No terminal available for interactive questions. Skipping."
             echo '{}' > "$answers_file"
@@ -29,58 +50,49 @@ ask_developer() {
             return 0
         fi
     else
-        exec 3<&0  # fd 3 = stdin (already a terminal)
+        exec 3<&0
     fi
 
     local answers="{}"
 
     echo ""
     echo "━━━ I have a few questions that code analysis can't answer ━━━"
-    echo ""
+    echo "    (These help generate better configuration. Enter to skip any.)"
 
-    # Question 1: Project purpose
+    # Detect project description from Phase 1
     local identity_desc=""
     if [[ -f "$WORK_DIR/findings/identity.json" ]]; then
         identity_desc=$(jq -r '.description // empty' "$WORK_DIR/findings/identity.json" 2>/dev/null)
     fi
 
-    if [[ -n "$identity_desc" ]]; then
-        echo "What is the primary purpose of this project?"
-        read -rp "  [${identity_desc}]: " purpose <&3
-        purpose="${purpose:-$identity_desc}"
-    else
-        read -rp "What is the primary purpose of this project? " purpose <&3
-    fi
+    local purpose deploy services never_do mistakes extra
+
+    ask_question purpose \
+        "What is the primary purpose of this project?" \
+        "$identity_desc"
     answers=$(echo "$answers" | jq --arg v "$purpose" '.project_purpose = $v')
 
-    # Question 2: Deployment target
-    echo ""
-    read -rp "Where is this deployed? (e.g., Vercel, AWS, self-hosted Docker, or Enter to skip): " deploy <&3
+    ask_question deploy \
+        "Where is this deployed? (e.g., Vercel, AWS, self-hosted Docker)"
     answers=$(echo "$answers" | jq --arg v "$deploy" '.deployment_target = $v')
 
-    # Question 3: External services
-    echo ""
-    read -rp "External services/APIs this integrates with? (comma-separated, or Enter to skip): " services <&3
+    ask_question services \
+        "What external services/APIs does this integrate with? (comma-separated)"
     answers=$(echo "$answers" | jq --arg v "$services" '.external_services = $v')
 
-    # Question 4: What Claude should NEVER do
-    echo ""
-    echo "What should Claude NEVER do in this codebase?"
-    echo "(e.g., 'never modify migrations directly', 'never bypass auth')"
-    read -rp "> " never_do <&3
+    ask_question never_do \
+        "What should Claude NEVER do in this codebase? (e.g., 'never edit migrations directly')"
     answers=$(echo "$answers" | jq --arg v "$never_do" '.never_do = $v')
 
-    # Question 5: Common mistakes
-    echo ""
-    read -rp "Common mistakes new developers make? (or Enter to skip): " mistakes <&3
+    ask_question mistakes \
+        "What common mistakes do new developers make in this project?"
     answers=$(echo "$answers" | jq --arg v "$mistakes" '.common_mistakes = $v')
 
-    # Question 6: Anything else
-    echo ""
-    read -rp "Anything else Claude should know about this project? (or Enter to skip): " extra <&3
+    ask_question extra \
+        "Anything else Claude should know about this project?"
     answers=$(echo "$answers" | jq --arg v "$extra" '.additional_context = $v')
 
-    exec 3<&-  # close fd 3
+    exec 3<&-
 
     echo ""
     echo "$answers" > "$answers_file"
