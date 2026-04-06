@@ -11,6 +11,10 @@ gather_evidence() {
 
     local schemas="$SCRIPT_DIR/schemas"
 
+    # Set per-agent budget: gather phase gets 50% of total, split across agents
+    # Stage 1 has 8 agents, stage 2 has N agents — estimate ~50 total
+    set_agent_budget "$GATHER_BUDGET" 50
+
     # ── Stage 1: Core agents + structure scout in parallel ──────
 
     log_progress "Stage 1: Core analysis + structure mapping..."

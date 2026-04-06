@@ -78,8 +78,7 @@ bash <(curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/lates
 | `--force` | Rerun all agents, ignoring cached findings from previous runs |
 | `--overwrite` | Back up and remove all existing CLAUDE.md files, skills, hooks, and agents before analysis, then regenerate from scratch. Implies `--force`. **Use this when re-running ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ on a project that already has configuration.** |
 | `--model MODEL` | Model for synthesis passes (default: `sonnet[1m]`). Use `opus[1m]` for maximum quality. |
-| `--budget DOLLARS` | Max USD per individual agent call (default: 5.00) |
-| `--synth-budget USD` | Max USD per synthesis pass (default: 20.00) |
+| `--budget DOLLARS` | Total budget for the entire run (default: 30.00). Automatically divided across phases: 50% gather, 10% research, 30% synthesis, 10% validation. The run stops when the budget is exhausted. |
 | `--skip-research` | Skip Phase 3 entirely (domain research and MCP discovery) |
 | `--skip-mcp` | Skip MCP server discovery only (still runs domain research) |
 | `--dry-run` | Run all analysis and synthesis but don't write any files to the project |
@@ -89,7 +88,7 @@ bash <(curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/lates
 | Environment Variable | Description |
 |---------------------|-------------|
 | `ULTRAINIT_MODEL` | Default model for gather/research agents (default: `sonnet`) |
-| `ULTRAINIT_BUDGET` | Default per-agent budget in USD (default: `5.00`) |
+| `ULTRAINIT_BUDGET` | Total run budget in USD (default: `30.00`) |
 
 ### What Gets Generated
 
@@ -240,7 +239,9 @@ ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{
 
 With `--model 'opus[1m]'` for synthesis: $20-50 total.
 
-Costs are tracked precisely (not estimated) and displayed at the end of each run. The `--budget` and `--synth-budget` flags set per-call spending caps.
+The `--budget` flag sets a total spending cap (default: $30). The budget is automatically divided across phases (50% gather, 10% research, 30% synthesis, 10% validation) and then split equally among agents within each phase. If the budget is exhausted mid-run, remaining agents are skipped. Actual costs are tracked precisely (not estimated) and displayed at the end of each run.
+
+If the budget seems too low for the selected model, a warning is shown at startup.
 
 ---
 
