@@ -108,7 +108,6 @@ log_info "Agent model: $AGENT_MODEL | Synthesis model: $SYNTH_MODEL"
 log_info "Total budget: \$$TOTAL_BUDGET (gather: \$$GATHER_BUDGET | research: \$$RESEARCH_BUDGET | synthesis: \$$SYNTH_BUDGET | validation: \$$VALIDATION_BUDGET)"
 
 # Show remaining budget if resuming a previous run
-local remaining
 remaining=$(get_remaining_budget)
 if [[ "$remaining" != "$TOTAL_BUDGET" ]]; then
     log_info "Resuming: \$$remaining remaining from \$$TOTAL_BUDGET budget"
