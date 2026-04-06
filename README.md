@@ -10,7 +10,7 @@ ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{
 curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/latest/download/ultrainit.sh | bash
 ```
 
-No Python. No npm. No dependencies beyond `claude` and `jq`.
+No Python. No npm. No dependencies beyond `claude` and `jq`. Runs 15-30 minutes depending on codebase size. Resumable if interrupted.
 
 ---
 
@@ -78,7 +78,7 @@ bash <(curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/lates
 | `--force` | Rerun all agents, ignoring cached findings from previous runs |
 | `--overwrite` | Back up and remove all existing CLAUDE.md files, skills, hooks, and agents before analysis, then regenerate from scratch. Implies `--force`. **Use this when re-running ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ on a project that already has configuration.** |
 | `--model MODEL` | Model for synthesis passes (default: `sonnet[1m]`). Use `opus[1m]` for maximum quality. |
-| `--budget DOLLARS` | Total budget for the entire run (default: 30.00). Automatically divided across phases: 50% gather, 10% research, 30% synthesis, 10% validation. The run stops when the budget is exhausted. |
+| `--budget DOLLARS` | Total budget for the entire run (default: 100.00). Automatically divided across phases: 50% gather, 10% research, 30% synthesis, 10% validation. The run stops when the budget is exhausted. |
 | `--skip-research` | Skip Phase 3 entirely (domain research and MCP discovery) |
 | `--skip-mcp` | Skip MCP server discovery only (still runs domain research) |
 | `--dry-run` | Run all analysis and synthesis but don't write any files to the project |
@@ -326,12 +326,14 @@ Use `--model 'opus[1m]'` for maximum quality synthesis.
 
 ### How long does it take?
 
-Typically 10-20 minutes for a medium-sized project:
-- Phase 1: 3-8 minutes (parallelized)
+Typically **15-30 minutes** depending on codebase size:
+- Phase 1: 5-15 minutes (8 core agents + 30-60 deep-dive agents, parallelized in batches)
 - Phase 2: 1-2 minutes (interactive)
 - Phase 3: 1-2 minutes (parallelized)
-- Phase 4: 3-8 minutes (two passes)
+- Phase 4: 3-8 minutes (two synthesis passes)
 - Phase 5: 1-3 minutes (validation + write)
+
+Large monorepos with 50+ directories can take up to 30 minutes. The run is fully resumable — if interrupted, rerun the same command and completed phases are skipped.
 
 ### What about rate limits?
 
