@@ -28,6 +28,7 @@ jobs:
 
       - name: Bundle ultrainit.sh
         run: |
+          mkdir -p dist
           bash bundle.sh > dist/ultrainit.sh
           chmod +x dist/ultrainit.sh
           echo "Bundle size: $(wc -c < dist/ultrainit.sh) bytes"
