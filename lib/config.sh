@@ -3,18 +3,18 @@
 
 # ── Defaults (overridable via env or CLI flags) ─────────────────
 
-FORCE="${FORCE:-false}"
-NON_INTERACTIVE="${NON_INTERACTIVE:-false}"
-VERBOSE="${VERBOSE:-false}"
-DRY_RUN="${DRY_RUN:-false}"
-SKIP_RESEARCH="${SKIP_RESEARCH:-false}"
-SKIP_MCP="${SKIP_MCP:-false}"
-OVERWRITE="${OVERWRITE:-false}"
+export FORCE="${FORCE:-false}"
+export NON_INTERACTIVE="${NON_INTERACTIVE:-false}"
+export VERBOSE="${VERBOSE:-false}"
+export DRY_RUN="${DRY_RUN:-false}"
+export SKIP_RESEARCH="${SKIP_RESEARCH:-false}"
+export SKIP_MCP="${SKIP_MCP:-false}"
+export OVERWRITE="${OVERWRITE:-false}"
 
-AGENT_MODEL="${ULTRAINIT_MODEL:-sonnet}"
-AGENT_BUDGET="${ULTRAINIT_BUDGET:-5.00}"
-SYNTH_MODEL="${SYNTH_MODEL:-sonnet[1m]}"
-SYNTH_BUDGET="${SYNTH_BUDGET:-20.00}"
+export AGENT_MODEL="${ULTRAINIT_MODEL:-sonnet}"
+export AGENT_BUDGET="${ULTRAINIT_BUDGET:-5.00}"
+export SYNTH_MODEL="${SYNTH_MODEL:-sonnet[1m]}"
+export SYNTH_BUDGET="${SYNTH_BUDGET:-20.00}"
 
 # ── Platform detection ──────────────────────────────────────────
 
