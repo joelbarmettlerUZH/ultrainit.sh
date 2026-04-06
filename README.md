@@ -352,4 +352,4 @@ Requirements: `bash`, `jq`, `claude` CLI. No other dependencies.
 
 ## License
 
-MIT
+Apache License 2.0 — see [LICENSE](LICENSE).
