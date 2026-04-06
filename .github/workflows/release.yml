@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tag is semver
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "Error: Tag '$TAG' is not valid semver (expected v1.2.3 or v1.2.3-beta.1)"
+            exit 1
+          fi
+          echo "VERSION=$TAG" >> "$GITHUB_ENV"
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Bundle ultrainit.sh
+        run: |
+          bash bundle.sh > dist/ultrainit.sh
+          chmod +x dist/ultrainit.sh
+          echo "Bundle size: $(wc -c < dist/ultrainit.sh) bytes"
+
+      - name: Verify bundle
+        run: bash -n dist/ultrainit.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ultrainit.sh
+          generate_release_notes: true
+          body: |
+            ## Usage
+
+            ```bash
+            curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/latest/download/ultrainit.sh | bash
+            ```
+
+            Or with options:
+
+            ```bash
+            bash <(curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/latest/download/ultrainit.sh) --non-interactive /path/to/project
+            ```
+
+            See [README](https://github.com/joelbarmettlerUZH/ultrainit.sh#readme) for full documentation.

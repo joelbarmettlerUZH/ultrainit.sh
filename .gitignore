@@ -1,4 +1,5 @@
 test-repos/
+dist/
 .idea/
 .venv/
 __pycache__/
