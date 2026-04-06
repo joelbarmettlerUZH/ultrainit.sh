@@ -268,61 +268,99 @@ print_summary() {
     local output="$1"
 
     echo ""
-    echo -e "${BOLD}Generated artifacts:${RESET}"
+    echo -e "${BOLD}━━━ Generated Artifacts ━━━${RESET}"
+    echo ""
 
-    # CLAUDE.md
+    # ── CLAUDE.md files ─────────────────────────────────────────
+    echo -e "${BOLD}Documentation:${RESET}"
     local lines
     lines=$(jq -r '.claude_md' "$output" | wc -l)
     echo -e "  ${GREEN}✓${RESET} CLAUDE.md ($lines lines)"
 
-    # Subdirectory CLAUDE.md
     local sub_count
     sub_count=$(jq '.subdirectory_claude_mds // [] | length' "$output")
-    if [[ $sub_count -gt 0 ]]; then
-        for i in $(seq 0 $((sub_count - 1))); do
-            local p
-            p=$(jq -r ".subdirectory_claude_mds[$i].path" "$output")
-            echo -e "  ${GREEN}✓${RESET} $p/CLAUDE.md"
-        done
-    fi
+    for i in $(seq 0 $((sub_count - 1))); do
+        local p
+        p=$(jq -r ".subdirectory_claude_mds[$i].path" "$output")
+        local sub_lines
+        sub_lines=$(jq -r ".subdirectory_claude_mds[$i].content" "$output" | wc -l)
+        echo -e "  ${GREEN}✓${RESET} $p/CLAUDE.md ($sub_lines lines)"
+    done
 
-    # Skills
+    # ── Skills ──────────────────────────────────────────────────
     local skill_count
     skill_count=$(jq '.skills // [] | length' "$output")
     if [[ $skill_count -gt 0 ]]; then
-        echo -e "  ${GREEN}✓${RESET} $skill_count skill(s):"
+        echo ""
+        echo -e "${BOLD}Skills ($skill_count):${RESET}"
         for i in $(seq 0 $((skill_count - 1))); do
-            local n
-            n=$(jq -r ".skills[$i].name" "$output")
-            echo -e "      .claude/skills/$n/SKILL.md"
+            local name desc
+            name=$(jq -r ".skills[$i].name" "$output")
+            desc=$(jq -r ".skills[$i].description" "$output")
+            echo -e "  ${GREEN}✓${RESET} ${BOLD}$name${RESET} — $desc"
         done
     fi
 
-    # Hooks
+    # ── Hooks ───────────────────────────────────────────────────
     local hook_count
     hook_count=$(jq '.hooks // [] | length' "$output")
     if [[ $hook_count -gt 0 ]]; then
-        echo -e "  ${GREEN}✓${RESET} $hook_count hook(s):"
+        echo ""
+        echo -e "${BOLD}Hooks ($hook_count):${RESET}"
         for i in $(seq 0 $((hook_count - 1))); do
-            local n
-            n=$(jq -r ".hooks[$i].filename" "$output")
-            echo -e "      .claude/hooks/$n"
+            local filename event matcher hook_desc
+            filename=$(jq -r ".hooks[$i].filename" "$output")
+            event=$(jq -r ".hooks[$i].event" "$output")
+            matcher=$(jq -r ".hooks[$i].matcher // empty" "$output")
+            hook_desc=$(jq -r ".hooks[$i].description" "$output")
+            local trigger="$event"
+            [[ -n "$matcher" ]] && trigger="$event($matcher)"
+            echo -e "  ${GREEN}✓${RESET} ${BOLD}$filename${RESET} [$trigger] — $hook_desc"
         done
     fi
 
-    # Subagents
+    # ── Subagents ───────────────────────────────────────────────
     local agent_count
     agent_count=$(jq '.subagents // [] | length' "$output")
     if [[ $agent_count -gt 0 ]]; then
-        echo -e "  ${GREEN}✓${RESET} $agent_count subagent(s)"
+        echo ""
+        echo -e "${BOLD}Subagents ($agent_count):${RESET}"
+        for i in $(seq 0 $((agent_count - 1))); do
+            local name desc
+            name=$(jq -r ".subagents[$i].name" "$output")
+            desc=$(jq -r ".subagents[$i].description" "$output")
+            echo -e "  ${GREEN}✓${RESET} ${BOLD}$name${RESET} — $desc"
+        done
     fi
 
-    # MCP servers
+    # ── MCP servers ─────────────────────────────────────────────
     local mcp_count
     mcp_count=$(jq '.mcp_servers // [] | length' "$output")
     if [[ $mcp_count -gt 0 ]]; then
-        echo -e "  ${GREEN}✓${RESET} $mcp_count MCP server(s) in .claude/mcp.json"
+        echo ""
+        echo -e "${BOLD}MCP Servers ($mcp_count):${RESET}"
+        for i in $(seq 0 $((mcp_count - 1))); do
+            local name reason
+            name=$(jq -r ".mcp_servers[$i].name" "$output")
+            reason=$(jq -r ".mcp_servers[$i].reason // .mcp_servers[$i].description // empty" "$output" 2>/dev/null)
+            echo -e "  ${GREEN}✓${RESET} ${BOLD}$name${RESET} — $reason"
+        done
+        echo -e "  ${BLUE}→${RESET} Review: .claude/mcp.json"
     fi
 
+    # ── Settings ────────────────────────────────────────────────
+    if [[ $hook_count -gt 0 ]]; then
+        echo ""
+        echo -e "  ${GREEN}✓${RESET} .claude/settings.json (hook wiring)"
+    fi
+
+    echo ""
+    echo -e "${BOLD}Next steps:${RESET}"
+    echo -e "  1. Review the generated CLAUDE.md — edit anything that doesn't match your project"
+    echo -e "  2. Browse .claude/skills/ — each skill encodes a workflow specific to your codebase"
+    echo -e "  3. Check .claude/hooks/ — verify formatters and file guards match your tooling"
+    if [[ $mcp_count -gt 0 ]]; then
+        echo -e "  4. Review .claude/mcp.json — set any required environment variables"
+    fi
     echo ""
 }

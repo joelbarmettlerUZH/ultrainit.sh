@@ -13,7 +13,7 @@ export OVERWRITE="${OVERWRITE:-false}"
 
 export AGENT_MODEL="${ULTRAINIT_MODEL:-sonnet}"
 export SYNTH_MODEL="${SYNTH_MODEL:-sonnet[1m]}"
-export TOTAL_BUDGET="${ULTRAINIT_BUDGET:-30.00}"
+export TOTAL_BUDGET="${ULTRAINIT_BUDGET:-100.00}"
 
 # ── Budget allocation ───────────────────────────────────────────
 #

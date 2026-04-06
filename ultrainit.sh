@@ -30,7 +30,7 @@ Options:
                        before analysis (backs up to .ultrainit/backups/).
                        Implies --force. Use this for a clean re-generation.
   --model MODEL        Model for synthesis (default: sonnet[1m])
-  --budget DOLLARS     Total budget for the entire run (default: 30.00).
+  --budget DOLLARS     Total budget for the entire run (default: 100.00).
                        Automatically divided across phases and agents.
                        The run stops when the budget is exhausted.
   --skip-research      Skip domain research and MCP discovery
@@ -45,11 +45,11 @@ Examples:
   ultrainit.sh --non-interactive          # Headless mode for CI
   ultrainit.sh --overwrite                # Fresh generation, remove old config
   ultrainit.sh --model 'opus[1m]'         # Use Opus 1M for synthesis
-  ultrainit.sh --budget 50               # Higher budget for large projects
+  ultrainit.sh --budget 50               # Lower budget for small projects
 
 Environment:
   ULTRAINIT_MODEL      Default model for gather agents (default: sonnet)
-  ULTRAINIT_BUDGET     Total budget in USD (default: 30.00)
+  ULTRAINIT_BUDGET     Total budget in USD (default: 100.00)
 EOF
 }
 
