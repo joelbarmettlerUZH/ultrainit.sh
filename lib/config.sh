@@ -36,13 +36,12 @@ BUDGET_PCT_SYNTHESIS=30
 BUDGET_PCT_VALIDATION=10
 
 # Computed per-phase budgets (set in compute_budgets)
-export GATHER_BUDGET=""
-export RESEARCH_BUDGET=""
-export SYNTH_BUDGET=""
-export VALIDATION_BUDGET=""
-
-# Per-agent budget (set dynamically per phase)
-export AGENT_BUDGET=""
+# These are computed by compute_budgets() and must survive child re-sourcing
+export GATHER_BUDGET="${GATHER_BUDGET:-}"
+export RESEARCH_BUDGET="${RESEARCH_BUDGET:-}"
+export SYNTH_BUDGET="${SYNTH_BUDGET:-}"
+export VALIDATION_BUDGET="${VALIDATION_BUDGET:-}"
+export AGENT_BUDGET="${AGENT_BUDGET:-}"
 
 compute_budgets() {
     GATHER_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_GATHER / 100" | bc)

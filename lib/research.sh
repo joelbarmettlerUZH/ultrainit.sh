@@ -21,12 +21,12 @@ run_research() {
     # Extract key info for research prompts
     local project_purpose=""
     local tech_stack=""
-    local external_services=""
+    local additional_context=""
     local deployment_target=""
 
     if [[ -f "$answers_file" ]]; then
         project_purpose=$(jq -r '.project_purpose // empty' "$answers_file" 2>/dev/null)
-        external_services=$(jq -r '.external_services // empty' "$answers_file" 2>/dev/null)
+        additional_context=$(jq -r '.additional_context // empty' "$answers_file" 2>/dev/null)
         deployment_target=$(jq -r '.deployment_target // empty' "$answers_file" 2>/dev/null)
     fi
 
@@ -63,7 +63,7 @@ Project: ${project_name:-unknown} — ${project_purpose:-unknown purpose}
 Languages: ${languages:-unknown}
 Tech stack: ${tech_stack}
 Deployment: ${deployment_target:-unknown}
-External services: ${external_services:-none mentioned}
+Additional context: ${additional_context:-none}
 
 Research:
 1. Domain-specific terminology and concepts that map to code patterns
@@ -83,7 +83,7 @@ Focus on version-specific, non-obvious information. Skip anything generic.' \
 Project: ${project_name:-unknown}
 Tech stack: ${tech_stack}
 Languages: ${languages:-unknown}
-External services: ${external_services:-none mentioned}
+Additional context: ${additional_context:-none}
 Deployment: ${deployment_target:-unknown}
 
 Search for MCP servers on npm, PyPI, and GitHub that are directly relevant to this tech stack.
