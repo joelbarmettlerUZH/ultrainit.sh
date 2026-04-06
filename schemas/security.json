@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "required": ["protected_files"],
+  "additionalProperties": false,
+  "properties": {
+    "protected_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path_pattern", "reason", "safe_alternative"],
+        "additionalProperties": false,
+        "properties": {
+          "path_pattern": {
+            "type": "string",
+            "description": "File path or glob pattern"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this file should be protected"
+          },
+          "safe_alternative": {
+            "type": "string",
+            "description": "What to do instead of editing this file directly"
+          }
+        }
+      }
+    }
+  }
+}

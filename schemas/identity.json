@@ -1,0 +1,70 @@
+{
+  "type": "object",
+  "required": ["name", "description", "languages", "frameworks", "monorepo", "deployment"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Project name"
+    },
+    "description": {
+      "type": "string",
+      "description": "One-line project description"
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "percentage"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "percentage": { "type": "number" }
+        }
+      }
+    },
+    "frameworks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string" }
+        }
+      }
+    },
+    "monorepo": {
+      "type": "boolean"
+    },
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      }
+    },
+    "deployment": {
+      "type": "string",
+      "description": "Detected deployment target or empty string"
+    },
+    "existing_ai_config": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string" },
+          "type": { "type": "string" }
+        }
+      }
+    }
+  }
+}

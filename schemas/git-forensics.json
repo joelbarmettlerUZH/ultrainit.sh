@@ -1,0 +1,94 @@
+{
+  "type": "object",
+  "required": ["hotspots", "temporal_coupling", "bug_fix_density", "ownership_diffusion", "recent_activity", "commit_patterns", "branch_patterns"],
+  "additionalProperties": false,
+  "properties": {
+    "hotspots": {
+      "type": "array",
+      "description": "Top 20 most frequently changed files",
+      "items": {
+        "type": "object",
+        "required": ["file", "change_count"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string" },
+          "change_count": { "type": "integer" }
+        }
+      }
+    },
+    "temporal_coupling": {
+      "type": "array",
+      "description": "Top 10 file pairs that consistently change together",
+      "items": {
+        "type": "object",
+        "required": ["file_a", "file_b", "co_change_count"],
+        "additionalProperties": false,
+        "properties": {
+          "file_a": { "type": "string" },
+          "file_b": { "type": "string" },
+          "co_change_count": { "type": "integer" }
+        }
+      }
+    },
+    "bug_fix_density": {
+      "type": "array",
+      "description": "Top 15 files appearing in bug-fix commits",
+      "items": {
+        "type": "object",
+        "required": ["file", "fix_count"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string" },
+          "fix_count": { "type": "integer" }
+        }
+      }
+    },
+    "ownership_diffusion": {
+      "type": "array",
+      "description": "Files touched by the most distinct authors",
+      "items": {
+        "type": "object",
+        "required": ["file", "author_count"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string" },
+          "author_count": { "type": "integer" }
+        }
+      }
+    },
+    "recent_activity": {
+      "type": "array",
+      "description": "Directories with most changes in the last 30 days",
+      "items": {
+        "type": "object",
+        "required": ["directory", "change_count"],
+        "additionalProperties": false,
+        "properties": {
+          "directory": { "type": "string" },
+          "change_count": { "type": "integer" }
+        }
+      }
+    },
+    "commit_patterns": {
+      "type": "object",
+      "required": ["conventional_commits", "ticket_references", "example_messages"],
+      "additionalProperties": false,
+      "properties": {
+        "conventional_commits": { "type": "boolean" },
+        "ticket_references": {
+          "type": "string",
+          "description": "Pattern for ticket references (e.g. JIRA-123) or empty"
+        },
+        "example_messages": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "branch_patterns": {
+      "type": "array",
+      "description": "Branch naming patterns from recent branches",
+      "items": { "type": "string" }
+    }
+  }
+}

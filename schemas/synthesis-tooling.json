@@ -1,0 +1,141 @@
+{
+  "type": "object",
+  "required": ["skills", "hooks"],
+  "additionalProperties": false,
+  "properties": {
+    "skills": {
+      "type": "array",
+      "description": "Claude Code skills for distinct functional areas. Aim for 10-30 skills.",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Skill name (kebab-case, e.g. 'add-api-endpoint')"
+          },
+          "description": {
+            "type": "string",
+            "description": "One-line description of what the skill covers"
+          },
+          "content": {
+            "type": "string",
+            "description": "Full SKILL.md content with YAML frontmatter and markdown body"
+          }
+        }
+      }
+    },
+    "hooks": {
+      "type": "array",
+      "description": "Hook scripts for automated checks",
+      "items": {
+        "type": "object",
+        "required": ["filename", "event", "description", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Script filename (e.g. 'autoformat.sh')"
+          },
+          "event": {
+            "type": "string",
+            "enum": ["PreToolUse", "PostToolUse", "Notification", "Stop"],
+            "description": "Hook event type"
+          },
+          "matcher": {
+            "type": "string",
+            "description": "Tool name matcher for PreToolUse/PostToolUse hooks (e.g. 'Write', 'Edit')"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this hook does"
+          },
+          "content": {
+            "type": "string",
+            "description": "Full bash script content"
+          }
+        }
+      }
+    },
+    "subagents": {
+      "type": "array",
+      "description": "Subagent definitions for complex workflows. Aim for 3-8.",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Agent name (kebab-case)"
+          },
+          "description": {
+            "type": "string",
+            "description": "One-line description"
+          },
+          "content": {
+            "type": "string",
+            "description": "Full agent markdown with YAML frontmatter"
+          }
+        }
+      }
+    },
+    "mcp_servers": {
+      "type": "array",
+      "description": "Recommended MCP servers to configure",
+      "items": {
+        "type": "object",
+        "required": ["name", "command", "args"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Server name key for mcp.json"
+          },
+          "command": {
+            "type": "string",
+            "description": "Command to run (e.g. 'npx', 'uvx')"
+          },
+          "args": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Command arguments"
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Environment variables needed"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this MCP server is useful for this project"
+          }
+        }
+      }
+    },
+    "settings_hooks": {
+      "type": "array",
+      "description": "Hook entries for .claude/settings.json",
+      "items": {
+        "type": "object",
+        "required": ["event", "command"],
+        "additionalProperties": false,
+        "properties": {
+          "event": {
+            "type": "string",
+            "enum": ["PreToolUse", "PostToolUse", "Notification", "Stop"]
+          },
+          "matcher": {
+            "type": "string",
+            "description": "Tool name matcher (e.g. 'Write', 'Edit')"
+          },
+          "command": {
+            "type": "string",
+            "description": "Shell command to run (path to hook script)"
+          }
+        }
+      }
+    }
+  }
+}

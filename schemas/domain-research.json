@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "required": ["domain_knowledge", "framework_practices", "common_pitfalls"],
+  "additionalProperties": false,
+  "properties": {
+    "domain_knowledge": {
+      "type": "array",
+      "description": "Industry-specific terminology and concepts that map to code patterns",
+      "items": {
+        "type": "object",
+        "required": ["concept", "relevance", "code_mapping"],
+        "additionalProperties": false,
+        "properties": {
+          "concept": { "type": "string" },
+          "relevance": { "type": "string", "description": "Why this matters for this codebase" },
+          "code_mapping": { "type": "string", "description": "How this concept maps to specific code patterns or files" }
+        }
+      }
+    },
+    "framework_practices": {
+      "type": "array",
+      "description": "Best practices for the specific framework versions detected",
+      "items": {
+        "type": "object",
+        "required": ["framework", "version", "practice", "relevance"],
+        "additionalProperties": false,
+        "properties": {
+          "framework": { "type": "string" },
+          "version": { "type": "string" },
+          "practice": { "type": "string", "description": "The specific practice or pattern" },
+          "relevance": { "type": "string", "description": "How this applies to this codebase specifically" }
+        }
+      }
+    },
+    "common_pitfalls": {
+      "type": "array",
+      "description": "Common mistakes developers make with this tech stack",
+      "items": {
+        "type": "object",
+        "required": ["pitfall", "affected_area", "prevention"],
+        "additionalProperties": false,
+        "properties": {
+          "pitfall": { "type": "string" },
+          "affected_area": { "type": "string", "description": "Which part of the codebase this affects" },
+          "prevention": { "type": "string", "description": "How to avoid this pitfall" }
+        }
+      }
+    },
+    "architectural_patterns": {
+      "type": "array",
+      "description": "Common architectural patterns for this type of application",
+      "items": {
+        "type": "object",
+        "required": ["pattern", "applicability"],
+        "additionalProperties": false,
+        "properties": {
+          "pattern": { "type": "string" },
+          "applicability": { "type": "string", "description": "Whether/how this applies to the detected architecture" }
+        }
+      }
+    }
+  }
+}

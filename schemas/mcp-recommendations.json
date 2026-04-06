@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "required": ["recommended_servers"],
+  "additionalProperties": false,
+  "properties": {
+    "recommended_servers": {
+      "type": "array",
+      "description": "MCP servers that would be useful for developing this project",
+      "items": {
+        "type": "object",
+        "required": ["name", "package", "description", "relevance", "configuration"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Server name for mcp.json config"
+          },
+          "package": {
+            "type": "string",
+            "description": "npm or pip package name (e.g. '@modelcontextprotocol/server-postgres')"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this MCP server does"
+          },
+          "relevance": {
+            "type": "string",
+            "description": "Why this server is specifically useful for THIS project"
+          },
+          "configuration": {
+            "type": "object",
+            "required": ["command", "args"],
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "type": "string",
+                "description": "Command to run (e.g. 'npx', 'uvx')"
+              },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Command arguments"
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "Required environment variables with placeholder values"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

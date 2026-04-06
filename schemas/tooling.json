@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "required": ["tools"],
+  "additionalProperties": false,
+  "properties": {
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "config_path", "purpose", "enforced_in_ci", "has_pre_commit"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Tool name (e.g. ESLint, Prettier, ruff, mypy)"
+          },
+          "config_path": {
+            "type": "string",
+            "description": "Path to the tool's config file"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "What the tool enforces (summary)"
+          },
+          "enforced_in_ci": {
+            "type": "boolean"
+          },
+          "has_pre_commit": {
+            "type": "boolean"
+          },
+          "key_rules": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Notable rules that should NOT be duplicated in CLAUDE.md"
+          }
+        }
+      }
+    }
+  }
+}

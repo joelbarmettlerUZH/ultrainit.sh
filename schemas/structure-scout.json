@@ -1,0 +1,57 @@
+{
+  "type": "object",
+  "required": ["project_type", "directories"],
+  "additionalProperties": false,
+  "properties": {
+    "project_type": {
+      "type": "string",
+      "enum": ["monorepo", "full-stack", "backend-only", "frontend-only", "library", "cli", "infrastructure", "other"],
+      "description": "High-level project classification"
+    },
+    "primary_language": {
+      "type": "string",
+      "description": "The dominant language (e.g. TypeScript, Python, Rust)"
+    },
+    "architecture_summary": {
+      "type": "string",
+      "description": "2-3 sentence summary of the overall architecture and how major parts relate"
+    },
+    "directories": {
+      "type": "array",
+      "description": "Every directory worth deep analysis. Include ALL significant directories, not just top-level.",
+      "items": {
+        "type": "object",
+        "required": ["path", "role", "priority", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path from project root (e.g. 'src/lib/components', 'backend/app/routers')"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["frontend-app", "frontend-components", "frontend-state", "frontend-api-client", "backend-app", "backend-routers", "backend-models", "backend-services", "backend-utils", "api-gateway", "database", "migrations", "tests", "e2e-tests", "documentation", "infrastructure", "ci-cd", "scripts", "config", "shared-lib", "types", "static-assets", "other"],
+            "description": "The role this directory plays in the project"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["high", "medium", "low"],
+            "description": "How important this directory is for understanding the codebase. High = core business logic, medium = supporting code, low = config/assets"
+          },
+          "description": {
+            "type": "string",
+            "description": "One-sentence description of what this directory contains"
+          },
+          "estimated_file_count": {
+            "type": "integer",
+            "description": "Approximate number of source files in this directory and its subdirectories"
+          },
+          "should_have_claude_md": {
+            "type": "boolean",
+            "description": "Whether this directory has enough distinct conventions to warrant its own CLAUDE.md"
+          }
+        }
+      }
+    }
+  }
+}
