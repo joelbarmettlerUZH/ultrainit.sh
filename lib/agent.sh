@@ -145,6 +145,7 @@ run_agents_parallel() {
         cat > "$script" <<AGENT_SCRIPT
 #!/usr/bin/env bash
 source "$SCRIPT_DIR/lib/utils.sh"
+source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/agent.sh"
 $agent_call
 AGENT_SCRIPT
