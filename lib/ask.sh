@@ -68,28 +68,24 @@ ask_developer() {
     local purpose deploy services never_do mistakes extra
 
     ask_question purpose \
-        "What is the primary purpose of this project?" \
+        "In one sentence, what does this project do?" \
         "$identity_desc"
     answers=$(echo "$answers" | jq --arg v "$purpose" '.project_purpose = $v')
 
     ask_question deploy \
-        "Where is this deployed? (e.g., Vercel, AWS, self-hosted Docker)"
+        "How is this deployed? (e.g., Docker, Vercel, AWS ECS, Kubernetes, bare metal)"
     answers=$(echo "$answers" | jq --arg v "$deploy" '.deployment_target = $v')
 
-    ask_question services \
-        "What external services/APIs does this integrate with? (comma-separated)"
-    answers=$(echo "$answers" | jq --arg v "$services" '.external_services = $v')
-
     ask_question never_do \
-        "What should Claude NEVER do in this codebase? (e.g., 'never edit migrations directly')"
+        "What should Claude NEVER do? (e.g., edit migrations, bypass auth, delete user data)"
     answers=$(echo "$answers" | jq --arg v "$never_do" '.never_do = $v')
 
     ask_question mistakes \
-        "What common mistakes do new developers make in this project?"
+        "What trips up new developers on this project?"
     answers=$(echo "$answers" | jq --arg v "$mistakes" '.common_mistakes = $v')
 
     ask_question extra \
-        "Anything else Claude should know about this project?"
+        "Anything else important? (team conventions, quirks, things the code won't tell you)"
     answers=$(echo "$answers" | jq --arg v "$extra" '.additional_context = $v')
 
     exec 3<&-
