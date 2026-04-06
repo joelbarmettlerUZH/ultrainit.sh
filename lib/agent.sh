@@ -35,6 +35,12 @@ run_agent() {
         return 0
     fi
 
+    # Budget enforcement: skip if total budget exhausted
+    if ! check_budget 2>/dev/null; then
+        log_warn "Skipping $name (budget exhausted)"
+        return 1
+    fi
+
     if [[ ! -f "$schema_file" ]]; then
         log_error "Schema file not found: $schema_file"
         return 1

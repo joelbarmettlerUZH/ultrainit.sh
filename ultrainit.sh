@@ -30,8 +30,9 @@ Options:
                        before analysis (backs up to .ultrainit/backups/).
                        Implies --force. Use this for a clean re-generation.
   --model MODEL        Model for synthesis (default: sonnet[1m])
-  --budget DOLLARS     Max USD per agent call (default: 5.00)
-  --synth-budget USD   Max USD per synthesis pass (default: 20.00)
+  --budget DOLLARS     Total budget for the entire run (default: 30.00).
+                       Automatically divided across phases and agents.
+                       The run stops when the budget is exhausted.
   --skip-research      Skip domain research and MCP discovery
   --skip-mcp           Skip MCP server discovery only
   --dry-run            Run analysis but don't write files
@@ -44,10 +45,11 @@ Examples:
   ultrainit.sh --non-interactive          # Headless mode for CI
   ultrainit.sh --overwrite                # Fresh generation, remove old config
   ultrainit.sh --model 'opus[1m]'         # Use Opus 1M for synthesis
+  ultrainit.sh --budget 50               # Higher budget for large projects
 
 Environment:
   ULTRAINIT_MODEL      Default model for gather agents (default: sonnet)
-  ULTRAINIT_BUDGET     Default per-agent budget (default: 5.00)
+  ULTRAINIT_BUDGET     Total budget in USD (default: 30.00)
 EOF
 }
 
@@ -60,8 +62,7 @@ while [[ $# -gt 0 ]]; do
         --force)           FORCE="true"; shift ;;
         --overwrite)       OVERWRITE="true"; FORCE="true"; shift ;;
         --model)           SYNTH_MODEL="$2"; shift 2 ;;
-        --budget)          AGENT_BUDGET="$2"; shift 2 ;;
-        --synth-budget)    SYNTH_BUDGET="$2"; shift 2 ;;
+        --budget)          TOTAL_BUDGET="$2"; shift 2 ;;
         --skip-research)   SKIP_RESEARCH="true"; shift ;;
         --skip-mcp)        SKIP_MCP="true"; shift ;;
         --dry-run)         DRY_RUN="true"; shift ;;
@@ -98,10 +99,13 @@ detect_platform
 check_dependencies
 setup_work_dir "$TARGET_DIR"
 
+compute_budgets
+check_budget_sanity
+
 log_info "Platform: $PLATFORM"
 log_info "Working directory: $WORK_DIR"
 log_info "Agent model: $AGENT_MODEL | Synthesis model: $SYNTH_MODEL"
-log_info "Agent budget: \$$AGENT_BUDGET | Synthesis budget: \$$SYNTH_BUDGET"
+log_info "Total budget: \$$TOTAL_BUDGET (gather: \$$GATHER_BUDGET | research: \$$RESEARCH_BUDGET | synthesis: \$$SYNTH_BUDGET | validation: \$$VALIDATION_BUDGET)"
 echo ""
 
 # ── Change to target directory ──────────────────────────────────

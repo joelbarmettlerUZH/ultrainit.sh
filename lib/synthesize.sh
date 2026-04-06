@@ -137,6 +137,16 @@ PROMPT_FOOTER
     local stderr_file="$WORK_DIR/logs/synthesis-${pass_name}.stderr"
     : > "$stderr_file"
 
+    # Budget: each synthesis pass gets half the synthesis phase budget
+    local pass_budget
+    pass_budget=$(echo "scale=2; $SYNTH_BUDGET / 2" | bc)
+
+    # Check total budget before starting
+    if ! check_budget 2>/dev/null; then
+        log_warn "Skipping synthesis pass '$pass_name' (budget exhausted)"
+        return 1
+    fi
+
     local raw_output
     raw_output=$(cat "$prompt_file" | claude -p - \
         --model "$SYNTH_MODEL" \
@@ -144,7 +154,7 @@ PROMPT_FOOTER
         --json-schema "$schema" \
         --allowedTools "Read" \
         --append-system-prompt-file "$prompt_file_path" \
-        --max-budget-usd "$SYNTH_BUDGET" \
+        --max-budget-usd "$pass_budget" \
         2>>"$stderr_file")
 
     local exit_code=$?

@@ -11,6 +11,9 @@ run_research() {
 
     local schemas="$SCRIPT_DIR/schemas"
 
+    # Set per-agent budget: research phase gets 10%, split across 2 agents
+    set_agent_budget "$RESEARCH_BUDGET" 2
+
     # Build context from Phase 1 findings for the research agents
     local identity_file="$WORK_DIR/findings/identity.json"
     local answers_file="$WORK_DIR/developer-answers.json"

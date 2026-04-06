@@ -285,7 +285,7 @@ REVISION_FOOTER
         --output-format json \
         --json-schema "$schema" \
         --allowedTools "Read" \
-        --max-budget-usd "$AGENT_BUDGET" \
+        --max-budget-usd "$VALIDATION_BUDGET" \
         2>>"$stderr_file")
 
     local exit_code=$?

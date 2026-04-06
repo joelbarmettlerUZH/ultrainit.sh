@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/config.sh — Dependency checks, defaults, platform detection
+# lib/config.sh — Dependency checks, defaults, platform detection, budget
 
 # ── Defaults (overridable via env or CLI flags) ─────────────────
 
@@ -12,9 +12,105 @@ export SKIP_MCP="${SKIP_MCP:-false}"
 export OVERWRITE="${OVERWRITE:-false}"
 
 export AGENT_MODEL="${ULTRAINIT_MODEL:-sonnet}"
-export AGENT_BUDGET="${ULTRAINIT_BUDGET:-5.00}"
 export SYNTH_MODEL="${SYNTH_MODEL:-sonnet[1m]}"
-export SYNTH_BUDGET="${SYNTH_BUDGET:-20.00}"
+export TOTAL_BUDGET="${ULTRAINIT_BUDGET:-30.00}"
+
+# ── Budget allocation ───────────────────────────────────────────
+#
+# The total budget is split across phases:
+#   Phase 1 (gather):     50%  — 8 core agents + N deep-dive agents
+#   Phase 3 (research):   10%  — 2 research agents
+#   Phase 4 (synthesis):  30%  — 2 synthesis passes (most expensive)
+#   Phase 5 (validation): 10%  — optional revision agent
+#
+# Within each phase, the budget is divided equally among agents.
+# Estimated costs per model per call:
+#   haiku:       $0.02–0.15
+#   sonnet:      $0.10–0.80
+#   sonnet[1m]:  $1.00–5.00
+#   opus[1m]:    $3.00–15.00
+
+BUDGET_PCT_GATHER=50
+BUDGET_PCT_RESEARCH=10
+BUDGET_PCT_SYNTHESIS=30
+BUDGET_PCT_VALIDATION=10
+
+# Computed per-phase budgets (set in compute_budgets)
+export GATHER_BUDGET=""
+export RESEARCH_BUDGET=""
+export SYNTH_BUDGET=""
+export VALIDATION_BUDGET=""
+
+# Per-agent budget (set dynamically per phase)
+export AGENT_BUDGET=""
+
+compute_budgets() {
+    GATHER_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_GATHER / 100" | bc)
+    RESEARCH_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_RESEARCH / 100" | bc)
+    SYNTH_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_SYNTHESIS / 100" | bc)
+    VALIDATION_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_VALIDATION / 100" | bc)
+
+    export GATHER_BUDGET RESEARCH_BUDGET SYNTH_BUDGET VALIDATION_BUDGET
+}
+
+# Set per-agent budget for a phase given the number of agents.
+# Usage: set_agent_budget <phase_budget> <agent_count>
+set_agent_budget() {
+    local phase_budget="$1"
+    local agent_count="$2"
+    [[ "$agent_count" -lt 1 ]] && agent_count=1
+    AGENT_BUDGET=$(echo "scale=2; $phase_budget / $agent_count" | bc)
+    export AGENT_BUDGET
+}
+
+# ── Budget enforcement ──────────────────────────────────────────
+
+# Check if we've exceeded the total budget. Returns 0 if OK, 1 if over.
+check_budget() {
+    local cost_file="$WORK_DIR/cost.log"
+    [[ ! -f "$cost_file" ]] && return 0
+
+    local spent
+    spent=$(awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' "$cost_file" 2>/dev/null || echo "0")
+
+    local over
+    over=$(echo "$spent >= $TOTAL_BUDGET" | bc 2>/dev/null || echo "0")
+
+    if [[ "$over" == "1" ]]; then
+        log_warn "Budget exhausted: \$$spent spent of \$$TOTAL_BUDGET total"
+        return 1
+    fi
+    return 0
+}
+
+# Get remaining budget
+get_remaining_budget() {
+    local cost_file="$WORK_DIR/cost.log"
+    local spent="0"
+    if [[ -f "$cost_file" ]]; then
+        spent=$(awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' "$cost_file" 2>/dev/null || echo "0")
+    fi
+    echo "scale=2; $TOTAL_BUDGET - $spent" | bc 2>/dev/null || echo "$TOTAL_BUDGET"
+}
+
+# ── Budget warnings ────────────────────────────────────────────
+
+check_budget_sanity() {
+    local model="$SYNTH_MODEL"
+
+    # Estimate minimum costs based on model
+    local min_cost=10
+    case "$model" in
+        *opus*)  min_cost=25 ;;
+        *sonnet*) min_cost=10 ;;
+        *haiku*) min_cost=5 ;;
+    esac
+
+    if (( $(echo "$TOTAL_BUDGET < $min_cost" | bc 2>/dev/null || echo 0) )); then
+        log_warn "Budget \$$TOTAL_BUDGET may be too low for model '$model' (recommended: \$$min_cost+)"
+        log_warn "Consider increasing with --budget or using a cheaper model"
+    fi
+}
 
 # ── Platform detection ──────────────────────────────────────────
 
