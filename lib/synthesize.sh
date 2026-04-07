@@ -9,18 +9,16 @@ synthesize() {
         return 0
     fi
 
-    log_progress "Building context from all findings..."
+    # ── Pass 1: CLAUDE.md files (full context) ──────────────────
 
-    # ── Collect all findings into one context document ──────────
+    log_progress "Building full context from all findings..."
 
-    local context_file="$WORK_DIR/synthesis-context.txt"
-    build_context "$context_file"
+    local full_context="$WORK_DIR/synthesis-context-full.txt"
+    build_full_context "$full_context"
 
     local context_size
-    context_size=$(wc -c < "$context_file" | tr -d ' ')
-    log_info "Context assembled: ${context_size} bytes"
-
-    # ── Pass 1: CLAUDE.md files ─────────────────────────────────
+    context_size=$(wc -c < "$full_context" | tr -d ' ')
+    log_info "Full context assembled: ${context_size} bytes"
 
     log_progress "Pass 1/2: Generating CLAUDE.md files (model: $SYNTH_MODEL)..."
 
@@ -28,14 +26,25 @@ synthesize() {
         "docs" \
         "$SCRIPT_DIR/schemas/synthesis-docs.json" \
         "$SCRIPT_DIR/prompts/synthesizer-docs.md" \
-        "$context_file" \
+        "$full_context" \
         "Generate comprehensive CLAUDE.md files for this codebase." \
         || return 1
 
-    # Brief pause between passes to avoid API rate limits on consecutive large-context calls
-    sleep 5
+    # ── Pass 2: Skills, hooks, subagents (focused context) ──────
+    #
+    # Pass 2 gets the generated CLAUDE.md (already distilled) plus
+    # only the findings relevant to tooling: skill opportunities,
+    # tooling config, security rules, MCP recommendations, and
+    # developer answers. Much smaller than the full context.
 
-    # ── Pass 2: Skills, hooks, subagents ────────────────────────
+    log_progress "Building focused context for tooling pass..."
+
+    local tooling_context="$WORK_DIR/synthesis-context-tooling.txt"
+    build_tooling_context "$tooling_context"
+
+    local tooling_size
+    tooling_size=$(wc -c < "$tooling_context" | tr -d ' ')
+    log_info "Tooling context assembled: ${tooling_size} bytes (vs ${context_size} full)"
 
     log_progress "Pass 2/2: Generating skills, hooks, and subagents (model: $SYNTH_MODEL)..."
 
@@ -43,7 +52,7 @@ synthesize() {
         "tooling" \
         "$SCRIPT_DIR/schemas/synthesis-tooling.json" \
         "$SCRIPT_DIR/prompts/synthesizer-tooling.md" \
-        "$context_file" \
+        "$tooling_context" \
         "Generate skills, hooks, subagents, and MCP server recommendations for this codebase." \
         || return 1
 
@@ -54,9 +63,9 @@ synthesize() {
     mark_phase_complete "synthesize"
 }
 
-# ── Build context from all findings ─────────────────────────────
+# ── Build full context (for Pass 1: docs) ───────────────────────
 
-build_context() {
+build_full_context() {
     local context_file="$1"
     : > "$context_file"
 
@@ -81,7 +90,7 @@ build_context() {
         fi
     done
 
-    # Module analyses
+    # Module analyses (full)
     for f in "$WORK_DIR/findings/module-"*.json; do
         if [[ -f "$f" ]]; then
             local mod_name
@@ -108,6 +117,129 @@ build_context() {
             echo -e "\n" >> "$context_file"
         fi
     done
+}
+
+# ── Build focused context (for Pass 2: tooling) ────────────────
+#
+# Instead of the full 1MB+ of raw findings, Pass 2 gets:
+#   1. The generated CLAUDE.md from Pass 1 (distilled architecture + conventions)
+#   2. Skill opportunities extracted from each module analysis
+#   3. Tooling findings (for hooks)
+#   4. Security findings (for file protection hooks)
+#   5. MCP discovery results
+#   6. Developer answers (never-do rules)
+#   7. Commands (for workflow skills)
+#   8. Patterns (for reference skills)
+
+build_tooling_context() {
+    local context_file="$1"
+    : > "$context_file"
+
+    # 1. The generated CLAUDE.md — the distilled source of truth
+    local docs_output="$WORK_DIR/synthesis/output-docs.json"
+    if [[ -f "$docs_output" ]]; then
+        echo "=== GENERATED CLAUDE.MD (from Pass 1 — use this as the source of truth for architecture and conventions) ===" >> "$context_file"
+        jq -r '.claude_md' "$docs_output" >> "$context_file"
+        echo -e "\n" >> "$context_file"
+
+        # Also include subdirectory CLAUDE.md paths so skills can reference them
+        local sub_count
+        sub_count=$(jq '.subdirectory_claude_mds // [] | length' "$docs_output")
+        if [[ $sub_count -gt 0 ]]; then
+            echo "=== SUBDIRECTORY CLAUDE.MD FILES ===" >> "$context_file"
+            for i in $(seq 0 $((sub_count - 1))); do
+                local path
+                path=$(jq -r ".subdirectory_claude_mds[$i].path" "$docs_output")
+                echo "--- $path/CLAUDE.md ---" >> "$context_file"
+                jq -r ".subdirectory_claude_mds[$i].content" "$docs_output" >> "$context_file"
+                echo -e "\n" >> "$context_file"
+            done
+        fi
+    fi
+
+    # 2. Skill opportunities from module analyses
+    echo "=== SKILL OPPORTUNITIES (from deep-dive analysis) ===" >> "$context_file"
+    for f in "$WORK_DIR/findings/module-"*.json; do
+        if [[ -f "$f" ]]; then
+            local mod_name
+            mod_name=$(basename "$f" .json | sed 's/^module-//')
+            local opportunities
+            opportunities=$(jq -r '.skill_opportunities // [] | .[] | "- \(.name): \(.description) [\(.workflow_steps | join(" → "))]"' "$f" 2>/dev/null)
+            if [[ -n "$opportunities" ]]; then
+                echo "Module $mod_name:" >> "$context_file"
+                echo "$opportunities" >> "$context_file"
+                echo "" >> "$context_file"
+            fi
+        fi
+    done
+    echo "" >> "$context_file"
+
+    # 3. Key files and patterns from module analyses (condensed)
+    echo "=== KEY FILES AND PATTERNS PER MODULE ===" >> "$context_file"
+    for f in "$WORK_DIR/findings/module-"*.json; do
+        if [[ -f "$f" ]]; then
+            local mod_name
+            mod_name=$(basename "$f" .json | sed 's/^module-//')
+            echo "Module $mod_name:" >> "$context_file"
+            # Extract just key_files and patterns (skip full architecture/conventions)
+            jq -r '
+                "  Key files: " + ([.key_files[]? | .path + " (" + .importance + ")"] | join(", ")),
+                "  Patterns: " + ([.patterns[]? | .name] | join(", ")),
+                "  Gotchas: " + ([.gotchas[]? | .issue] | join("; "))
+            ' "$f" 2>/dev/null >> "$context_file"
+            echo "" >> "$context_file"
+        fi
+    done
+    echo "" >> "$context_file"
+
+    # 4. Tooling findings (for hooks)
+    if [[ -f "$WORK_DIR/findings/tooling.json" ]]; then
+        echo "=== TOOLING (use this to decide which hooks to generate) ===" >> "$context_file"
+        cat "$WORK_DIR/findings/tooling.json" >> "$context_file"
+        echo -e "\n" >> "$context_file"
+    fi
+
+    # 5. Security findings (for file protection hooks)
+    if [[ -f "$WORK_DIR/findings/security-scan.json" ]]; then
+        echo "=== SECURITY (use this for file protection hooks) ===" >> "$context_file"
+        cat "$WORK_DIR/findings/security-scan.json" >> "$context_file"
+        echo -e "\n" >> "$context_file"
+    fi
+
+    # 6. Commands (for workflow skills)
+    if [[ -f "$WORK_DIR/findings/commands.json" ]]; then
+        echo "=== COMMANDS (use this for workflow and verification skills) ===" >> "$context_file"
+        cat "$WORK_DIR/findings/commands.json" >> "$context_file"
+        echo -e "\n" >> "$context_file"
+    fi
+
+    # 7. Patterns (for reference skills)
+    if [[ -f "$WORK_DIR/findings/patterns.json" ]]; then
+        echo "=== PATTERNS (use this for reference and scaffolding skills) ===" >> "$context_file"
+        cat "$WORK_DIR/findings/patterns.json" >> "$context_file"
+        echo -e "\n" >> "$context_file"
+    fi
+
+    # 8. MCP discovery
+    if [[ -f "$WORK_DIR/findings/mcp-discovery.json" ]]; then
+        echo "=== MCP SERVER RECOMMENDATIONS ===" >> "$context_file"
+        cat "$WORK_DIR/findings/mcp-discovery.json" >> "$context_file"
+        echo -e "\n" >> "$context_file"
+    fi
+
+    # 9. Developer answers
+    if [[ -f "$WORK_DIR/developer-answers.json" ]]; then
+        echo "=== DEVELOPER ANSWERS ===" >> "$context_file"
+        cat "$WORK_DIR/developer-answers.json" >> "$context_file"
+        echo -e "\n" >> "$context_file"
+    fi
+
+    # 10. Project identity
+    if [[ -f "$WORK_DIR/findings/identity.json" ]]; then
+        echo "=== PROJECT IDENTITY ===" >> "$context_file"
+        cat "$WORK_DIR/findings/identity.json" >> "$context_file"
+        echo -e "\n" >> "$context_file"
+    fi
 }
 
 # ── Run a single synthesis pass ─────────────────────────────────
@@ -138,7 +270,6 @@ Every rule must trace to evidence above. No generic advice. No duplication of li
 PROMPT_FOOTER
 
     local stderr_file="$WORK_DIR/logs/synthesis-${pass_name}.stderr"
-    : > "$stderr_file"
 
     # Budget: each synthesis pass gets half the synthesis phase budget
     local pass_budget
@@ -154,7 +285,6 @@ PROMPT_FOOTER
     local max_retries=3
     local attempt=0
     local raw_output=""
-    local exit_code=1
 
     while [[ $attempt -lt $max_retries ]]; do
         attempt=$((attempt + 1))
@@ -169,24 +299,22 @@ PROMPT_FOOTER
             --max-budget-usd "$pass_budget" \
             2>>"$stderr_file") || true
 
-        exit_code=$?
-
         # Check for API-level errors
         local is_error
         is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
         local error_msg
         error_msg=$(echo "$raw_output" | jq -r '.result // ""' 2>/dev/null)
 
-        if [[ $exit_code -eq 0 ]] && [[ "$is_error" != "true" ]]; then
+        if [[ "$is_error" != "true" ]] && [[ -n "$raw_output" ]]; then
             break  # success
         fi
 
         if [[ $attempt -lt $max_retries ]]; then
-            log_warn "Synthesis pass '$pass_name' failed (attempt $attempt/$max_retries): ${error_msg:-exit $exit_code}"
+            log_warn "Synthesis pass '$pass_name' failed (attempt $attempt/$max_retries): ${error_msg:-unknown error}"
             log_progress "Retrying in 10 seconds..."
             sleep 10
         else
-            log_error "Synthesis pass '$pass_name' failed after $max_retries attempts: ${error_msg:-exit $exit_code}"
+            log_error "Synthesis pass '$pass_name' failed after $max_retries attempts: ${error_msg:-unknown error}"
             return 1
         fi
     done
@@ -215,6 +343,8 @@ PROMPT_FOOTER
 merge_synthesis_passes() {
     local docs="$WORK_DIR/synthesis/output-docs.json"
     local tooling="$WORK_DIR/synthesis/output-tooling.json"
+
+    mkdir -p "$WORK_DIR/synthesis"
 
     # Merge into the format expected by validate + write phases
     jq -s '.[0] * .[1]' "$docs" "$tooling" > "$WORK_DIR/synthesis/output.json"
