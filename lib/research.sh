@@ -85,14 +85,18 @@ Tech stack: ${tech_stack}
 Languages: ${languages:-unknown}
 Deployment: ${deployment_target:-unknown}
 
-Search for MCP servers relevant to this tech stack. Use WebSearch to find them.
-Do NOT use WebFetch — just search and recommend based on search results.
-Always recommend context7 for up-to-date library docs.
-Recommend database MCP servers if the project uses PostgreSQL, MongoDB, SQLite, etc.
-Recommend playwright if there is a frontend.
-Keep it to 3-6 highly relevant servers. Do not exhaustively search every framework.' \
+Use the official MCP registry API to find servers. Example:
+  WebFetch https://registry.modelcontextprotocol.io/v0.1/servers?limit=10&search=QUERY&version=latest
+
+Search for the key technologies: database names, framework names, etc.
+Do NOT fetch github.com/mcp directly — it returns HTML, not JSON. Use WebSearch for GitHub results instead.
+
+If a WebFetch returns a 403 or error, skip it and move on. Do NOT retry failed URLs.
+
+Always recommend context7 (up-to-date library docs) and playwright (if frontend exists).
+Keep recommendations to 3-8 highly relevant servers.' \
             '$schemas/mcp-recommendations.json' \
-            'Read,WebSearch' \
+            'Read,WebSearch,WebFetch' \
             sonnet")
     fi
 
