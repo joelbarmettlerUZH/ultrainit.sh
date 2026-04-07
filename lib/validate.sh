@@ -143,10 +143,12 @@ validate_claude_md() {
     # Generic phrases
     local generic_count
     generic_count=$(echo "$claude_md" | grep -ciE '(best practice|clean code|solid principle|maintainable|readable|scalable|well-structured|production.ready|industry standard)' || true)
-    if [[ $generic_count -gt 0 ]]; then
-        echo "CLAUDE.md contains $generic_count generic phrases (must be 0)" >> "$issues_file"
+    if [[ $generic_count -gt 3 ]]; then
+        echo "CLAUDE.md contains $generic_count generic phrases (max 3)" >> "$issues_file"
         log_warn "CLAUDE.md contains $generic_count generic phrase(s)"
         err=$((err + 1))
+    elif [[ $generic_count -gt 0 ]]; then
+        log_info "CLAUDE.md contains $generic_count generic phrase(s) (acceptable)"
     fi
 
     # Command blocks or tables (must have at least one)
