@@ -48,8 +48,9 @@ A typical run on a full-stack web application:
 
 ### Prerequisites
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed and authenticated
-- `jq` (`brew install jq` / `apt install jq`)
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- `jq` (`brew install jq` / `apt install jq` / `choco install jq`)
+- [Extra usage](https://claude.ai/settings/usage) enabled (required for 1M context synthesis)
 
 ### Run
 
@@ -341,15 +342,23 @@ Deep-dive agents run in batches of 8 to avoid API rate limits. If individual age
 
 ---
 
-## Platform Support
+## Prerequisites
 
-| Platform | Status |
-|----------|--------|
-| Linux (bash) | Tested |
-| macOS (zsh/bash) | Supported |
-| Windows (Git Bash / WSL) | Supported |
+### Required
 
-Requirements: `bash`, `jq`, `claude` CLI. No other dependencies.
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- `jq` — install via `brew install jq` (macOS), `apt install jq` (Linux), or `choco install jq` (Windows)
+- **Extra usage enabled** — the synthesis phase uses models with 1M token context. Enable extra usage at [claude.ai/settings/usage](https://claude.ai/settings/usage), otherwise synthesis will fail with "Extra usage is required for 1M context".
+
+### Platform Support
+
+| Platform | How to Run |
+|----------|-----------|
+| **Linux** | Works directly. `bash` and `jq` are usually pre-installed. |
+| **macOS** | Works directly. Install `jq` via `brew install jq`. |
+| **Windows** | Use **WSL** (recommended) or **Git Bash**. Native `cmd.exe` / PowerShell are not supported. In WSL, install `jq` with `sudo apt install jq`. |
+
+**Windows users:** If you see errors about missing commands or encoding issues, make sure you're running inside WSL or Git Bash, not PowerShell. The `curl | bash` command requires a Unix-like shell.
 
 ---
 
