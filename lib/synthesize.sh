@@ -32,6 +32,9 @@ synthesize() {
         "Generate comprehensive CLAUDE.md files for this codebase." \
         || return 1
 
+    # Brief pause between passes to avoid API rate limits on consecutive large-context calls
+    sleep 5
+
     # ── Pass 2: Skills, hooks, subagents ────────────────────────
 
     log_progress "Pass 2/2: Generating skills, hooks, and subagents (model: $SYNTH_MODEL)..."
@@ -147,29 +150,46 @@ PROMPT_FOOTER
         return 1
     fi
 
-    local raw_output
-    raw_output=$(cat "$prompt_file" | claude -p - \
-        --model "$SYNTH_MODEL" \
-        --output-format json \
-        --json-schema "$schema" \
-        --allowedTools "Read" \
-        --append-system-prompt-file "$prompt_file_path" \
-        --max-budget-usd "$pass_budget" \
-        2>>"$stderr_file")
+    # Run with up to 3 retries (transient API errors on large-context calls)
+    local max_retries=3
+    local attempt=0
+    local raw_output=""
+    local exit_code=1
 
-    local exit_code=$?
+    while [[ $attempt -lt $max_retries ]]; do
+        attempt=$((attempt + 1))
+        : > "$stderr_file"
 
-    if [[ $exit_code -ne 0 ]]; then
-        log_error "Synthesis pass '$pass_name' failed (exit $exit_code). See $stderr_file"
-        return 1
-    fi
+        raw_output=$(cat "$prompt_file" | claude -p - \
+            --model "$SYNTH_MODEL" \
+            --output-format json \
+            --json-schema "$schema" \
+            --allowedTools "Read" \
+            --append-system-prompt-file "$prompt_file_path" \
+            --max-budget-usd "$pass_budget" \
+            2>>"$stderr_file") || true
 
-    local is_error
-    is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
-    if [[ "$is_error" == "true" ]]; then
-        log_error "Synthesis pass '$pass_name' returned an error"
-        return 1
-    fi
+        exit_code=$?
+
+        # Check for API-level errors
+        local is_error
+        is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
+        local error_msg
+        error_msg=$(echo "$raw_output" | jq -r '.result // ""' 2>/dev/null)
+
+        if [[ $exit_code -eq 0 ]] && [[ "$is_error" != "true" ]]; then
+            break  # success
+        fi
+
+        if [[ $attempt -lt $max_retries ]]; then
+            log_warn "Synthesis pass '$pass_name' failed (attempt $attempt/$max_retries): ${error_msg:-exit $exit_code}"
+            log_progress "Retrying in 10 seconds..."
+            sleep 10
+        else
+            log_error "Synthesis pass '$pass_name' failed after $max_retries attempts: ${error_msg:-exit $exit_code}"
+            return 1
+        fi
+    done
 
     # Extract structured output
     echo "$raw_output" | jq '.structured_output // .result // .' \
