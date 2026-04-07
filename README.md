@@ -365,6 +365,10 @@ Deep-dive agents run in batches of 8 to avoid API rate limits. If individual age
 
 ---
 
+## Author
+
+Built by [Joel Barmettler](https://joelbarmettler.xyz).
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
