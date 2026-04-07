@@ -83,15 +83,16 @@ Focus on version-specific, non-obvious information. Skip anything generic.' \
 Project: ${project_name:-unknown}
 Tech stack: ${tech_stack}
 Languages: ${languages:-unknown}
-Additional context: ${additional_context:-none}
 Deployment: ${deployment_target:-unknown}
 
-Search for MCP servers on npm, PyPI, and GitHub that are directly relevant to this tech stack.
-For database servers: look for the specific databases this project uses.
-For framework docs: look for servers providing documentation for the detected frameworks.
-Only recommend servers that are actively maintained and directly useful.' \
+Search for MCP servers relevant to this tech stack. Use WebSearch to find them.
+Do NOT use WebFetch — just search and recommend based on search results.
+Always recommend context7 for up-to-date library docs.
+Recommend database MCP servers if the project uses PostgreSQL, MongoDB, SQLite, etc.
+Recommend playwright if there is a frontend.
+Keep it to 3-6 highly relevant servers. Do not exhaustively search every framework.' \
             '$schemas/mcp-recommendations.json' \
-            'Read,WebSearch,WebFetch,Bash(curl:*)' \
+            'Read,WebSearch' \
             sonnet")
     fi
 
