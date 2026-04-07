@@ -247,78 +247,136 @@ validate_hook_wiring() {
 }
 
 # ── Revision agent ──────────────────────────────────────────────
+#
+# Only fixes the specific artifacts that failed validation.
+# Extracts just the broken items, sends them for revision,
+# patches them back into output.json.
 
 run_revision_agent() {
     local issues_file="$1"
     local issues
     issues=$(cat "$issues_file")
-
-    log_progress "Running revision agent to fix issues..."
-
-    local schema
-    schema=$(cat "$SCRIPT_DIR/schemas/synthesis-output.json")
-
+    local output="$WORK_DIR/synthesis/output.json"
     local stderr_file="$WORK_DIR/logs/revision.stderr"
+    : > "$stderr_file"
 
-    # Build revision prompt as a file (output.json can be very large)
-    local revision_prompt_file="$WORK_DIR/revision-prompt.txt"
-    cat > "$revision_prompt_file" <<REVISION_HEADER
-These generated Claude Code artifacts have validation issues. Fix ONLY the issues listed below. Do NOT change anything that passed validation.
+    # ── Collect failed skill names ──────────────────────────────
+    local failed_skills=()
+    while IFS= read -r line; do
+        local name
+        name=$(echo "$line" | sed -n 's/^Skill \([^:]*\):.*/\1/p')
+        [[ -n "$name" ]] && failed_skills+=("$name")
+    done < <(grep '^Skill ' "$issues_file")
+
+    # ── Collect CLAUDE.md issues ────────────────────────────────
+    local claude_md_issues
+    claude_md_issues=$(grep '^CLAUDE.md' "$issues_file" || true)
+
+    local total_fixes=$(( ${#failed_skills[@]} + $([ -n "$claude_md_issues" ] && echo 1 || echo 0) ))
+
+    if [[ $total_fixes -eq 0 ]]; then
+        log_info "No fixable issues found. Proceeding with original artifacts."
+        return 0
+    fi
+
+    # ── Fix failed skills ───────────────────────────────────────
+    if [[ ${#failed_skills[@]} -gt 0 ]]; then
+        log_progress "Revising ${#failed_skills[@]} failed skill(s)..."
+
+        # Extract just the failed skills
+        local failed_skills_json="[]"
+        for name in "${failed_skills[@]}"; do
+            local skill
+            skill=$(jq --arg n "$name" '.skills[] | select(.name == $n)' "$output")
+            failed_skills_json=$(echo "$failed_skills_json" | jq --argjson s "$skill" '. + [$s]')
+        done
+
+        # Get the issues for these skills
+        local skill_issues
+        skill_issues=$(grep '^Skill \|^ERROR:' "$issues_file" | head -20)
+
+        local revision_schema='{"type":"object","required":["skills"],"additionalProperties":false,"properties":{"skills":{"type":"array","items":{"type":"object","required":["name","description","content"],"additionalProperties":false,"properties":{"name":{"type":"string"},"description":{"type":"string"},"content":{"type":"string"}}}}}}'
+
+        local raw_output
+        raw_output=$(claude -p "Fix these skills that failed validation. Return ONLY the fixed skills.
 
 ISSUES:
-$issues
+$skill_issues
 
-CURRENT ARTIFACTS:
-REVISION_HEADER
-    cat "$WORK_DIR/synthesis/output.json" >> "$revision_prompt_file"
-    cat >> "$revision_prompt_file" <<'REVISION_FOOTER'
+FAILED SKILLS:
+$failed_skills_json
 
-Fix all issues and return the corrected artifacts. Key rules:
-- CLAUDE.md must contain ZERO generic phrases (best practice, clean code, SOLID, maintainable, readable, scalable, well-structured, production-ready, industry standard)
-- Every prohibition must include an alternative
-- Skill descriptions must NOT contain XML angle brackets (< or >) — use quotes or parentheses instead
-- Skills must have ≥3 codebase-specific file references, kebab-case name, description with trigger phrases + negative scope
-- Hooks must have shebang + set -euo pipefail, read stdin, and print actionable errors on exit 2
-- Every hook script must have a matching settings_hooks entry
-REVISION_FOOTER
+Rules:
+- Skill descriptions must NOT contain XML angle brackets (< or >)
+- Skills must have ≥3 codebase-specific file references
+- Skills must have a description with trigger phrases and a 'Do NOT use for' boundary
+- Keep the skill name and overall structure, just fix the flagged issues" \
+            --model sonnet \
+            --output-format json \
+            --json-schema "$revision_schema" \
+            --allowedTools "" \
+            --max-budget-usd 2.00 \
+            2>>"$stderr_file") || true
 
-    local raw_output
-    raw_output=$(cat "$revision_prompt_file" | claude -p - \
-        --model sonnet \
-        --output-format json \
-        --json-schema "$schema" \
-        --allowedTools "Read" \
-        --max-budget-usd "$VALIDATION_BUDGET" \
-        2>>"$stderr_file")
+        local rev_cost
+        rev_cost=$(echo "$raw_output" | jq -r '.total_cost_usd // 0' 2>/dev/null)
+        record_cost "validate" "revision-skills" "$rev_cost"
 
-    local exit_code=$?
+        local is_error
+        is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
 
-    if [[ $exit_code -ne 0 ]]; then
-        log_warn "Revision agent failed (exit $exit_code). Proceeding with original artifacts."
-        return 0
+        if [[ "$is_error" != "true" ]] && [[ -n "$raw_output" ]]; then
+            local revised_skills
+            revised_skills=$(echo "$raw_output" | jq '.structured_output // .result // .' 2>/dev/null)
+
+            if echo "$revised_skills" | jq -e '.skills | length > 0' >/dev/null 2>&1; then
+                # Patch each fixed skill back into output.json
+                local tmp_output="${output}.tmp"
+                cp "$output" "$tmp_output"
+
+                for name in "${failed_skills[@]}"; do
+                    local fixed_skill
+                    fixed_skill=$(echo "$revised_skills" | jq --arg n "$name" '.skills[] | select(.name == $n)' 2>/dev/null)
+                    if [[ -n "$fixed_skill" ]] && echo "$fixed_skill" | jq -e '.content' >/dev/null 2>&1; then
+                        jq --arg n "$name" --argjson fix "$fixed_skill" \
+                            '(.skills[] | select(.name == $n)) |= $fix' \
+                            "$tmp_output" > "${tmp_output}.2" && mv "${tmp_output}.2" "$tmp_output"
+                        log_success "Fixed skill: $name"
+                    fi
+                done
+
+                mv "$tmp_output" "$output"
+            else
+                log_warn "Skill revision produced invalid output. Keeping originals."
+            fi
+        else
+            log_warn "Skill revision failed. Keeping originals."
+        fi
     fi
 
-    # Track cost
-    local rev_cost
-    rev_cost=$(echo "$raw_output" | jq -r '.total_cost_usd // 0' 2>/dev/null)
-    record_cost "validate" "revision" "$rev_cost"
+    # ── Fix CLAUDE.md generic phrases ───────────────────────────
+    if [[ -n "$claude_md_issues" ]]; then
+        log_progress "Fixing CLAUDE.md generic phrases..."
 
-    local is_error
-    is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
-    if [[ "$is_error" == "true" ]]; then
-        log_warn "Revision agent returned an error. Proceeding with original artifacts."
-        return 0
-    fi
+        local claude_md
+        claude_md=$(jq -r '.claude_md' "$output")
 
-    # Extract and validate revised output
-    local revised
-    revised=$(echo "$raw_output" | jq '.structured_output // .result // .')
+        # Remove known generic phrases with sed (no LLM needed)
+        local fixed_md
+        fixed_md=$(echo "$claude_md" | sed -E \
+            -e 's/[Bb]est [Pp]ractice[s]?/recommended approach/g' \
+            -e 's/[Cc]lean [Cc]ode/well-organized code/g' \
+            -e 's/SOLID [Pp]rinciple[s]?/design principles/g' \
+            -e 's/[Mm]aintainable/easy to modify/g' \
+            -e 's/[Rr]eadable/clear/g' \
+            -e 's/[Ss]calable/able to handle growth/g' \
+            -e 's/[Ww]ell-[Ss]tructured/well-organized/g' \
+            -e 's/[Pp]roduction[- ][Rr]eady/deployment-ready/g' \
+            -e 's/[Ii]ndustry [Ss]tandard/widely-adopted/g')
 
-    if echo "$revised" | jq -e 'type == "object" and .claude_md' >/dev/null 2>&1; then
-        echo "$revised" > "$WORK_DIR/synthesis/output.json"
-        log_success "Artifacts revised successfully"
-    else
-        log_warn "Revision produced invalid output. Proceeding with original artifacts."
+        local tmp_output="${output}.tmp"
+        jq --arg md "$fixed_md" '.claude_md = $md' "$output" > "$tmp_output" && mv "$tmp_output" "$output"
+        log_success "Fixed CLAUDE.md generic phrases"
     fi
 
     return 0
