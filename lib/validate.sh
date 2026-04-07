@@ -11,8 +11,9 @@ validate_artifacts() {
 
     # ── Validate CLAUDE.md ──────────────────────────────────────
 
-    validate_claude_md "$output" "$issues_file"
-    errors=$((errors + $?))
+    local claude_md_errors=0
+    validate_claude_md "$output" "$issues_file" || claude_md_errors=$?
+    errors=$((errors + claude_md_errors))
 
     # ── Validate skills (write to temp files, run validator) ────
 
@@ -63,8 +64,9 @@ validate_artifacts() {
     log_info "Hooks generated: $hook_count"
 
     for i in $(seq 0 $((hook_count - 1))); do
-        validate_hook "$output" "$i" "$issues_file"
-        errors=$((errors + $?))
+        local hook_errors=0
+        validate_hook "$output" "$i" "$issues_file" || hook_errors=$?
+        errors=$((errors + hook_errors))
     done
 
     # ── Validate subagents ──────────────────────────────────────
@@ -104,8 +106,9 @@ validate_artifacts() {
 
     # ── Validate hook wiring ────────────────────────────────────
 
-    validate_hook_wiring "$output" "$issues_file"
-    errors=$((errors + $?))
+    local wiring_errors=0
+    validate_hook_wiring "$output" "$issues_file" || wiring_errors=$?
+    errors=$((errors + wiring_errors))
 
     # ── Summary ─────────────────────────────────────────────────
 
@@ -143,12 +146,10 @@ validate_claude_md() {
     # Generic phrases
     local generic_count
     generic_count=$(echo "$claude_md" | grep -ciE '(best practice|clean code|solid principle|maintainable|readable|scalable|well-structured|production.ready|industry standard)' || true)
-    if [[ $generic_count -gt 3 ]]; then
-        echo "CLAUDE.md contains $generic_count generic phrases (max 3)" >> "$issues_file"
+    if [[ $generic_count -gt 0 ]]; then
+        echo "CLAUDE.md contains $generic_count generic phrases (must be 0)" >> "$issues_file"
         log_warn "CLAUDE.md contains $generic_count generic phrase(s)"
         err=$((err + 1))
-    elif [[ $generic_count -gt 0 ]]; then
-        log_info "CLAUDE.md contains $generic_count generic phrase(s) (acceptable)"
     fi
 
     # Command blocks or tables (must have at least one)
