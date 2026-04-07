@@ -34,13 +34,13 @@ A typical run on a full-stack web application:
 
 | What | Count |
 |------|-------|
-| Directories deep-analyzed | 30-50 |
-| Root CLAUDE.md | 200-300 lines |
+| Directories deep-analyzed | 30-60 |
+| Root CLAUDE.md | 250-400 lines |
 | Subdirectory CLAUDE.md files | 5-15 |
-| Skills | 15-25 |
+| Skills | 15-30 |
 | Hooks | 3-5 |
 | Subagents | 3-8 |
-| MCP servers configured | 2-6 |
+| MCP servers configured | 3-8 |
 
 ---
 
@@ -51,6 +51,7 @@ A typical run on a full-stack web application:
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 - `jq` (`brew install jq` / `apt install jq` / `choco install jq`)
 - [Extra usage](https://claude.ai/settings/usage) enabled (required for 1M context synthesis)
+- **Recommended:** [Claude Max subscription](https://claude.ai/settings/billing) — all usage is included, making ultrainit free. Without it, expect $30-60 in API credits per run.
 
 ### Run
 
@@ -95,7 +96,7 @@ bash <(curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/lates
 
 ```
 your-project/
-├── CLAUDE.md                           # Root configuration (200-300 lines)
+├── CLAUDE.md                           # Root configuration (250-400 lines)
 ├── backend/CLAUDE.md                   # Backend-specific conventions
 ├── frontend/CLAUDE.md                  # Frontend-specific conventions
 ├── ...more subdirectory CLAUDE.md...
@@ -231,18 +232,20 @@ ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{
 
 | Phase | Agents | Typical Cost |
 |-------|--------|-------------|
-| Phase 1: Gather (core) | 8 parallel | $1-3 |
-| Phase 1: Gather (deep-dives) | 20-50 parallel | $5-15 |
-| Phase 3: Research | 2 parallel | $0.50-2 |
-| Phase 4: Synthesize | 2 sequential | $3-8 |
-| Phase 5: Validate/Revise | 0-1 | $0-3 |
-| **Total** | | **$10-30** |
+| Phase 1: Gather (core) | 8 parallel | $2-5 |
+| Phase 1: Gather (deep-dives) | 30-60 parallel | $20-40 |
+| Phase 3: Research | 2 parallel | $1-3 |
+| Phase 4: Synthesize | 2 sequential | $4-10 |
+| Phase 5: Validate/Revise | 0-1 | $0-1 |
+| **Total** | | **$30-60** |
 
-With `--model 'opus[1m]'` for synthesis: $20-50 total.
+With `--model 'opus[1m]'` for synthesis: $50-100 total. A real run on [open-webui](https://github.com/open-webui/open-webui) (full-stack SvelteKit + FastAPI, 58 directories) cost **$45**.
 
-The `--budget` flag sets a total spending cap (default: $30). The budget is automatically divided across phases (50% gather, 10% research, 30% synthesis, 10% validation) and then split equally among agents within each phase. If the budget is exhausted mid-run, remaining agents are skipped. Actual costs are tracked precisely (not estimated) and displayed at the end of each run.
+The `--budget` flag sets a total spending cap (default: $100). The budget is automatically divided across phases (50% gather, 10% research, 30% synthesis, 10% validation) and then split equally among agents within each phase. If the budget is exhausted mid-run, remaining agents are skipped. Actual costs are tracked precisely and displayed at the end of each run.
 
 If the budget seems too low for the selected model, a warning is shown at startup.
+
+**Recommended: Use a [Claude Max subscription](https://claude.ai/settings/billing).** With Claude Max, all API usage from Claude Code is included in your subscription — making ultrainit effectively free. Without a subscription, a typical run costs $30-60 in API credits.
 
 ---
 
