@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # lib/synthesize.sh — Phase 4: Two-pass synthesis
 
+# Approximate tokens from byte count (chars/4 is a rough estimate)
+estimate_tokens() {
+    local bytes="$1"
+    echo "$(( bytes / 4 ))"
+}
+
 synthesize() {
     log_phase "Phase 4: Synthesis"
 
@@ -9,16 +15,19 @@ synthesize() {
         return 0
     fi
 
-    # ── Pass 1: CLAUDE.md files (full context) ──────────────────
+    # ── Pass 1: CLAUDE.md files ─────────────────────────────────
+    # Gets core findings + condensed module info (architecture, patterns,
+    # conventions, gotchas — NOT full key_files, domain_terms, skill_opportunities)
 
-    log_progress "Building full context from all findings..."
+    log_progress "Building docs context..."
 
-    local full_context="$WORK_DIR/synthesis-context-full.txt"
-    build_full_context "$full_context"
+    local docs_context="$WORK_DIR/synthesis-context-docs.txt"
+    build_docs_context "$docs_context"
 
-    local context_size
-    context_size=$(wc -c < "$full_context" | tr -d ' ')
-    log_info "Full context assembled: ${context_size} bytes"
+    local docs_size docs_tokens
+    docs_size=$(wc -c < "$docs_context" | tr -d ' ')
+    docs_tokens=$(estimate_tokens "$docs_size")
+    log_info "Docs context: ${docs_size} bytes (~${docs_tokens} tokens)"
 
     log_progress "Pass 1/2: Generating CLAUDE.md files (model: $SYNTH_MODEL)..."
 
@@ -26,25 +35,23 @@ synthesize() {
         "docs" \
         "$SCRIPT_DIR/schemas/synthesis-docs.json" \
         "$SCRIPT_DIR/prompts/synthesizer-docs.md" \
-        "$full_context" \
+        "$docs_context" \
         "Generate comprehensive CLAUDE.md files for this codebase." \
         || return 1
 
-    # ── Pass 2: Skills, hooks, subagents (focused context) ──────
-    #
-    # Pass 2 gets the generated CLAUDE.md (already distilled) plus
-    # only the findings relevant to tooling: skill opportunities,
-    # tooling config, security rules, MCP recommendations, and
-    # developer answers. Much smaller than the full context.
+    # ── Pass 2: Skills, hooks, subagents ────────────────────────
+    # Gets the generated CLAUDE.md (already distilled) plus only the
+    # findings relevant to tooling generation.
 
-    log_progress "Building focused context for tooling pass..."
+    log_progress "Building tooling context..."
 
     local tooling_context="$WORK_DIR/synthesis-context-tooling.txt"
     build_tooling_context "$tooling_context"
 
-    local tooling_size
+    local tooling_size tooling_tokens
     tooling_size=$(wc -c < "$tooling_context" | tr -d ' ')
-    log_info "Tooling context assembled: ${tooling_size} bytes (vs ${context_size} full)"
+    tooling_tokens=$(estimate_tokens "$tooling_size")
+    log_info "Tooling context: ${tooling_size} bytes (~${tooling_tokens} tokens)"
 
     log_progress "Pass 2/2: Generating skills, hooks, and subagents (model: $SYNTH_MODEL)..."
 
@@ -63,13 +70,18 @@ synthesize() {
     mark_phase_complete "synthesize"
 }
 
-# ── Build full context (for Pass 1: docs) ───────────────────────
+# ── Build docs context (for Pass 1: CLAUDE.md) ──────────────────
+#
+# Includes all core findings in full, plus CONDENSED module analyses.
+# Condensed = purpose, architecture overview, patterns, conventions,
+# gotchas. Excludes: full key_files lists, domain_terms, skill_opportunities,
+# detailed dependency lists — those are for Pass 2.
 
-build_full_context() {
+build_docs_context() {
     local context_file="$1"
     : > "$context_file"
 
-    # Core findings
+    # Core findings (full — these are already compact)
     local -A finding_labels=(
         [identity]="PROJECT IDENTITY"
         [commands]="COMMANDS"
@@ -90,13 +102,29 @@ build_full_context() {
         fi
     done
 
-    # Module analyses (full)
+    # Module analyses — extract only CLAUDE.md-relevant fields
+    echo "=== MODULE ANALYSES ===" >> "$context_file"
+    echo "(Condensed: architecture, patterns, conventions, gotchas per module)" >> "$context_file"
+    echo "" >> "$context_file"
+
     for f in "$WORK_DIR/findings/module-"*.json; do
         if [[ -f "$f" ]]; then
             local mod_name
             mod_name=$(basename "$f" .json | sed 's/^module-//')
-            echo "=== MODULE: $mod_name ===" >> "$context_file"
-            cat "$f" >> "$context_file"
+            echo "--- MODULE: $mod_name ---" >> "$context_file"
+            # Extract only what the CLAUDE.md needs
+            jq '{
+                module_path,
+                purpose,
+                architecture: {
+                    overview: .architecture.overview,
+                    subdirectories: .architecture.subdirectories,
+                    data_flow: .architecture.data_flow
+                },
+                patterns,
+                conventions,
+                gotchas
+            }' "$f" 2>/dev/null >> "$context_file"
             echo -e "\n" >> "$context_file"
         fi
     done
@@ -108,28 +136,18 @@ build_full_context() {
         echo -e "\n" >> "$context_file"
     fi
 
-    # Research findings
-    for key in domain-research mcp-discovery; do
-        local f="$WORK_DIR/findings/${key}.json"
-        if [[ -f "$f" ]]; then
-            echo "=== $(echo "$key" | tr '[:lower:]-' '[:upper:] ') ===" >> "$context_file"
-            cat "$f" >> "$context_file"
-            echo -e "\n" >> "$context_file"
-        fi
-    done
+    # Domain research
+    if [[ -f "$WORK_DIR/findings/domain-research.json" ]]; then
+        echo "=== DOMAIN RESEARCH ===" >> "$context_file"
+        cat "$WORK_DIR/findings/domain-research.json" >> "$context_file"
+        echo -e "\n" >> "$context_file"
+    fi
 }
 
-# ── Build focused context (for Pass 2: tooling) ────────────────
+# ── Build tooling context (for Pass 2: skills/hooks/agents) ─────
 #
-# Instead of the full 1MB+ of raw findings, Pass 2 gets:
-#   1. The generated CLAUDE.md from Pass 1 (distilled architecture + conventions)
-#   2. Skill opportunities extracted from each module analysis
-#   3. Tooling findings (for hooks)
-#   4. Security findings (for file protection hooks)
-#   5. MCP discovery results
-#   6. Developer answers (never-do rules)
-#   7. Commands (for workflow skills)
-#   8. Patterns (for reference skills)
+# Gets the generated CLAUDE.md (already distilled architecture),
+# plus focused findings for tooling generation.
 
 build_tooling_context() {
     local context_file="$1"
@@ -138,15 +156,14 @@ build_tooling_context() {
     # 1. The generated CLAUDE.md — the distilled source of truth
     local docs_output="$WORK_DIR/synthesis/output-docs.json"
     if [[ -f "$docs_output" ]]; then
-        echo "=== GENERATED CLAUDE.MD (from Pass 1 — use this as the source of truth for architecture and conventions) ===" >> "$context_file"
+        echo "=== GENERATED ROOT CLAUDE.MD (source of truth for architecture and conventions) ===" >> "$context_file"
         jq -r '.claude_md' "$docs_output" >> "$context_file"
         echo -e "\n" >> "$context_file"
 
-        # Also include subdirectory CLAUDE.md paths so skills can reference them
         local sub_count
         sub_count=$(jq '.subdirectory_claude_mds // [] | length' "$docs_output")
         if [[ $sub_count -gt 0 ]]; then
-            echo "=== SUBDIRECTORY CLAUDE.MD FILES ===" >> "$context_file"
+            echo "=== GENERATED SUBDIRECTORY CLAUDE.MD FILES ===" >> "$context_file"
             for i in $(seq 0 $((sub_count - 1))); do
                 local path
                 path=$(jq -r ".subdirectory_claude_mds[$i].path" "$docs_output")
@@ -174,14 +191,13 @@ build_tooling_context() {
     done
     echo "" >> "$context_file"
 
-    # 3. Key files and patterns from module analyses (condensed)
+    # 3. Key files and patterns per module (condensed)
     echo "=== KEY FILES AND PATTERNS PER MODULE ===" >> "$context_file"
     for f in "$WORK_DIR/findings/module-"*.json; do
         if [[ -f "$f" ]]; then
             local mod_name
             mod_name=$(basename "$f" .json | sed 's/^module-//')
             echo "Module $mod_name:" >> "$context_file"
-            # Extract just key_files and patterns (skip full architecture/conventions)
             jq -r '
                 "  Key files: " + ([.key_files[]? | .path + " (" + .importance + ")"] | join(", ")),
                 "  Patterns: " + ([.patterns[]? | .name] | join(", ")),
@@ -192,30 +208,30 @@ build_tooling_context() {
     done
     echo "" >> "$context_file"
 
-    # 4. Tooling findings (for hooks)
+    # 4. Tooling (for hooks)
     if [[ -f "$WORK_DIR/findings/tooling.json" ]]; then
-        echo "=== TOOLING (use this to decide which hooks to generate) ===" >> "$context_file"
+        echo "=== TOOLING (use for deciding which hooks to generate) ===" >> "$context_file"
         cat "$WORK_DIR/findings/tooling.json" >> "$context_file"
         echo -e "\n" >> "$context_file"
     fi
 
-    # 5. Security findings (for file protection hooks)
+    # 5. Security (for file protection hooks)
     if [[ -f "$WORK_DIR/findings/security-scan.json" ]]; then
-        echo "=== SECURITY (use this for file protection hooks) ===" >> "$context_file"
+        echo "=== SECURITY (use for file protection hooks) ===" >> "$context_file"
         cat "$WORK_DIR/findings/security-scan.json" >> "$context_file"
         echo -e "\n" >> "$context_file"
     fi
 
     # 6. Commands (for workflow skills)
     if [[ -f "$WORK_DIR/findings/commands.json" ]]; then
-        echo "=== COMMANDS (use this for workflow and verification skills) ===" >> "$context_file"
+        echo "=== COMMANDS (use for workflow and verification skills) ===" >> "$context_file"
         cat "$WORK_DIR/findings/commands.json" >> "$context_file"
         echo -e "\n" >> "$context_file"
     fi
 
     # 7. Patterns (for reference skills)
     if [[ -f "$WORK_DIR/findings/patterns.json" ]]; then
-        echo "=== PATTERNS (use this for reference and scaffolding skills) ===" >> "$context_file"
+        echo "=== PATTERNS (use for reference and scaffolding skills) ===" >> "$context_file"
         cat "$WORK_DIR/findings/patterns.json" >> "$context_file"
         echo -e "\n" >> "$context_file"
     fi
@@ -269,6 +285,11 @@ Based on ALL of the above findings, generate the requested artifacts.
 Every rule must trace to evidence above. No generic advice. No duplication of linter rules. Be comprehensive and thorough.
 PROMPT_FOOTER
 
+    local prompt_size prompt_tokens
+    prompt_size=$(wc -c < "$prompt_file" | tr -d ' ')
+    prompt_tokens=$(estimate_tokens "$prompt_size")
+    log_info "Prompt for '$pass_name': ${prompt_size} bytes (~${prompt_tokens} tokens)"
+
     local stderr_file="$WORK_DIR/logs/synthesis-${pass_name}.stderr"
 
     # Budget: each synthesis pass gets half the synthesis phase budget
@@ -320,6 +341,7 @@ PROMPT_FOOTER
     done
 
     # Extract structured output
+    mkdir -p "$WORK_DIR/synthesis"
     echo "$raw_output" | jq '.structured_output // .result // .' \
         > "$WORK_DIR/synthesis/output-${pass_name}.json" 2>/dev/null
 
@@ -344,8 +366,6 @@ merge_synthesis_passes() {
     local docs="$WORK_DIR/synthesis/output-docs.json"
     local tooling="$WORK_DIR/synthesis/output-tooling.json"
 
-    mkdir -p "$WORK_DIR/synthesis"
-
     # Merge into the format expected by validate + write phases
     jq -s '.[0] * .[1]' "$docs" "$tooling" > "$WORK_DIR/synthesis/output.json"
 
@@ -357,7 +377,6 @@ merge_synthesis_passes() {
 
 # ── Post-processing ─────────────────────────────────────────────
 
-# Strip angle brackets from skill and subagent YAML description fields.
 postprocess_descriptions() {
     local output_file="$1"
     local tmp_file="${output_file}.tmp"
