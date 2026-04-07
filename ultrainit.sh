@@ -16,10 +16,21 @@ source "$SCRIPT_DIR/lib/synthesize.sh"
 source "$SCRIPT_DIR/lib/validate.sh"
 source "$SCRIPT_DIR/lib/merge.sh"
 
+# ── Banner ──────────────────────────────────────────────────────
+print_banner() {
+    local R='\033[0;31m' O='\033[38;5;208m' Y='\033[0;33m' G='\033[0;32m' V='\033[0;35m' B='\033[0;34m' P='\033[38;5;213m' X='\033[0m'
+    echo ""
+    echo -e "${R}▗▖ ▗▖${O}▗▖ ${Y}▗▄▄▄▖${G}▗▄▄▖ ${V} ▗▄▖ ${B}▗▄▄▄▖${P}▗▖  ▗▖${R}▗▄▄▄▖${O}▗▄▄▄▖${X}"
+    echo -e "${R}▐▌ ▐▌${O}▐▌ ${Y}  █  ${G}▐▌ ▐▌${V}▐▌ ▐▌${B}  █  ${P}▐▛▚▖▐▌${R}  █  ${O}  █  ${X}"
+    echo -e "${R}▐▌ ▐▌${O}▐▌ ${Y}  █  ${G}▐▛▀▚▖${V}▐▛▀▜▌${B}  █  ${P}▐▌ ▝▜▌${R}  █  ${O}  █  ${X}"
+    echo -e "${R}▝▚▄▞▘${O}▐▙▄▄▖${Y}█  ${G}▐▌ ▐▌${V}▐▌ ▐▌${B}▗▄█▄▖${P}▐▌  ▐▌${R}▗▄█▄▖${O}  █  ${X}"
+}
+
 # ── Usage ───────────────────────────────────────────────────────
 usage() {
+    print_banner
     cat <<'EOF'
-ultrainit — Deep codebase analysis for Claude Code configuration
+Deep codebase analysis for Claude Code configuration
 
 Usage: ultrainit.sh [OPTIONS] [PATH]
 
@@ -78,13 +89,7 @@ TARGET_DIR="${TARGET_DIR:-.}"
 TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
 export TARGET_DIR
 
-# ── Banner ──────────────────────────────────────────────────────
-echo ""
-C_R='\033[0;31m'; C_O='\033[38;5;208m'; C_Y='\033[0;33m'; C_G='\033[0;32m'; C_V='\033[0;35m'; C_B='\033[0;34m'; C_P='\033[38;5;213m'; C_X='\033[0m'
-echo -e "${C_R}▗▖ ▗▖${C_O}▗▖ ${C_Y}▗▄▄▄▖${C_G}▗▄▄▖ ${C_V} ▗▄▖ ${C_B}▗▄▄▄▖${C_P}▗▖  ▗▖${C_R}▗▄▄▄▖${C_O}▗▄▄▄▖${C_X}"
-echo -e "${C_R}▐▌ ▐▌${C_O}▐▌ ${C_Y}  █  ${C_G}▐▌ ▐▌${C_V}▐▌ ▐▌${C_B}  █  ${C_P}▐▛▚▖▐▌${C_R}  █  ${C_O}  █  ${C_X}"
-echo -e "${C_R}▐▌ ▐▌${C_O}▐▌ ${C_Y}  █  ${C_G}▐▛▀▚▖${C_V}▐▛▀▜▌${C_B}  █  ${C_P}▐▌ ▝▜▌${C_R}  █  ${C_O}  █  ${C_X}"
-echo -e "${C_R}▝▚▄▞▘${C_O}▐▙▄▄▖${C_Y}█  ${C_G}▐▌ ▐▌${C_V}▐▌ ▐▌${C_B}▗▄█▄▖${C_P}▐▌  ▐▌${C_R}▗▄█▄▖${C_O}  █  ${C_X}"
+print_banner
 echo -e "  ${BOLD}Deep codebase analysis for Claude Code${RESET}"
 echo -e "  Target: ${CYAN}${TARGET_DIR}${RESET}"
 echo ""
