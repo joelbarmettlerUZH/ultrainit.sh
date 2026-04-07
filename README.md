@@ -4,7 +4,7 @@
 
 <h3 align="center">One command. Any codebase. A complete Claude Code configuration.</h3>
 
-${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ deeply analyzes your codebase and generates everything Claude Code needs to work like a senior engineer who's been on the team for months — a comprehensive CLAUDE.md, dozens of skills, hooks, subagents, and MCP server configurations.
+${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ deeply analyzes your codebase and generates everything Claude Code needs to work like a senior engineer who's been on the team for months - a comprehensive CLAUDE.md, dozens of skills, hooks, subagents, and MCP server configurations.
 
 ```bash
 curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/latest/download/ultrainit.sh | bash
@@ -28,7 +28,7 @@ Writing all of this by hand takes days. Most teams either skip it entirely or wr
 
 ## The Solution
 
-${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ sends a swarm of Claude Code agents to analyze your codebase from every angle — architecture, git history, patterns, tooling, documentation, security — then synthesizes everything into a production-grade configuration.
+${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ sends a swarm of Claude Code agents to analyze your codebase from every angle - architecture, git history, patterns, tooling, documentation, security - then synthesizes everything into a production-grade configuration.
 
 A typical run on a full-stack web application:
 
@@ -51,7 +51,7 @@ A typical run on a full-stack web application:
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 - `jq` (`brew install jq` / `apt install jq` / `choco install jq`)
 - [Extra usage](https://claude.ai/settings/usage) enabled (required for 1M context synthesis)
-- **Recommended:** [Claude Max subscription](https://claude.ai/settings/billing) — all usage is included, making ultrainit free. Without it, expect $30-60 in API credits per run.
+- **Recommended:** [Claude Max subscription](https://claude.ai/settings/billing) - all usage is included, making ultrainit free. Without it, expect $30-60 in API credits per run.
 
 ### Run
 
@@ -137,12 +137,12 @@ ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{
 | **Commands** | Haiku | Finds every build, test, lint, format, and typecheck command from package.json, Makefiles, CI pipelines |
 | **Git Forensics** | Sonnet | Analyzes commit history for hotspots, bug-fix density, temporal coupling, ownership patterns, commit conventions |
 | **Patterns** | Sonnet | Discovers architectural patterns, error handling, import conventions, naming conventions, state management, auth patterns |
-| **Tooling** | Haiku | Identifies configured linters, formatters, type checkers, and pre-commit hooks — so CLAUDE.md doesn't duplicate their rules |
+| **Tooling** | Haiku | Identifies configured linters, formatters, type checkers, and pre-commit hooks - so CLAUDE.md doesn't duplicate their rules |
 | **Docs Scanner** | Haiku | Finds and summarizes all existing documentation, identifies documented vs undocumented conventions |
 | **Security Scanner** | Haiku | Identifies files that need protection: secrets, migrations, lock files, generated code, security-critical modules |
 | **Structure Scout** | Sonnet | Maps the directory tree 3+ levels deep, classifies every directory by role and priority, identifies which directories need their own CLAUDE.md |
 
-Then, based on the Structure Scout's map, **deep-dive agents** spawn — one per important directory, running in parallel batches of 8. A typical full-stack project has 30-50 directories analyzed this way. Each deep-dive agent reads actual source files (not just filenames) and reports:
+Then, based on the Structure Scout's map, **deep-dive agents** spawn - one per important directory, running in parallel batches of 8. A typical full-stack project has 30-50 directories analyzed this way. Each deep-dive agent reads actual source files (not just filenames) and reports:
 
 - Internal architecture and organization philosophy
 - Key files with importance rankings
@@ -150,7 +150,7 @@ Then, based on the Structure Scout's map, **deep-dive agents** spawn — one per
 - Naming, import, and error handling conventions
 - Dependencies (internal and external)
 - Gotchas that would trip up unfamiliar developers
-- **Skill opportunities** — multi-step workflows that should become skills
+- **Skill opportunities** - multi-step workflows that should become skills
 
 This phase produces 500KB-1MB of structured findings.
 
@@ -184,9 +184,9 @@ Skipped with `--skip-research`.
 
 All findings (~1MB) are fed into two focused synthesis passes using the **1M context** model:
 
-**Pass 1 — Documentation**: Generates the root CLAUDE.md and all subdirectory CLAUDE.md files. The model receives the full findings and a prompt focused entirely on producing comprehensive, well-structured documentation with deep architecture coverage, real file references, and concrete conventions.
+**Pass 1 - Documentation**: Generates the root CLAUDE.md and all subdirectory CLAUDE.md files. The model receives the full findings and a prompt focused entirely on producing comprehensive, well-structured documentation with deep architecture coverage, real file references, and concrete conventions.
 
-**Pass 2 — Tooling**: Generates skills, hooks, subagents, MCP server configurations, and settings. The model receives the same full findings plus a prompt focused on identifying every workflow that should be a skill, every rule that should be a hook, and every analysis task that should be a subagent.
+**Pass 2 - Tooling**: Generates skills, hooks, subagents, MCP server configurations, and settings. The model receives the same full findings plus a prompt focused on identifying every workflow that should be a skill, every rule that should be a hook, and every analysis task that should be a subagent.
 
 Splitting into two passes lets each focus deeply rather than trying to produce everything at once.
 
@@ -220,7 +220,7 @@ If validation fails, a **revision agent** automatically fixes the issues and re-
 
 Finally, artifacts are written to disk with safe merge behavior:
 - `CLAUDE.md`: Overwritten (previous version backed up)
-- Skills, hooks, subagents: Only new files created — existing files are never overwritten
+- Skills, hooks, subagents: Only new files created - existing files are never overwritten
 - `settings.json`: Deep-merged (new hooks added, existing preserved)
 - `mcp.json`: Deep-merged (new servers added, existing preserved)
 
@@ -245,7 +245,7 @@ The `--budget` flag sets a total spending cap (default: $100). The budget is aut
 
 If the budget seems too low for the selected model, a warning is shown at startup.
 
-**Recommended: Use a [Claude Max subscription](https://claude.ai/settings/billing).** With Claude Max, all API usage from Claude Code is included in your subscription — making ultrainit effectively free. Without a subscription, a typical run costs $30-60 in API credits.
+**Recommended: Use a [Claude Max subscription](https://claude.ai/settings/billing).** With Claude Max, all API usage from Claude Code is included in your subscription - making ultrainit effectively free. Without a subscription, a typical run costs $30-60 in API credits.
 
 ---
 
@@ -253,7 +253,7 @@ If the budget seems too low for the selected model, a warning is shown at startu
 
 ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ saves all intermediate results to `.ultrainit/` in your project directory. If the script crashes or is interrupted:
 
-- Rerun the same command — completed agents are skipped automatically
+- Rerun the same command - completed agents are skipped automatically
 - Use `--force` to rerun everything from scratch
 - The `.ultrainit/` directory is automatically added to `.gitignore`
 
@@ -286,7 +286,7 @@ ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{
 ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ sends 30-60 focused agents with structured output schemas, scoped tool access, and specific system prompts. Each agent is an expert at one thing: git forensics, security scanning, pattern detection, etc. A single Claude session can't match this depth because:
 
 1. **Parallel analysis**: 8 agents examine the codebase simultaneously from different angles
-2. **Structured output**: JSON schemas enforce completeness — agents can't skip fields
+2. **Structured output**: JSON schemas enforce completeness - agents can't skip fields
 3. **Hierarchical exploration**: The structure scout maps 3+ levels deep, then dedicated agents deep-dive into each important directory
 4. **Web research**: Domain practices and MCP servers are discovered via live web search
 5. **Validation**: Generated artifacts are structurally validated and automatically revised if issues are found
@@ -311,12 +311,12 @@ This backs up all existing configuration to `.ultrainit/backups/`, removes it, t
 
 **Without `--overwrite`**, the default merge behavior is conservative:
 - Root `CLAUDE.md`: overwritten (backed up)
-- Skills, hooks, agents: **merge-only** — new files added, existing files never touched
+- Skills, hooks, agents: **merge-only** - new files added, existing files never touched
 - `settings.json` and `mcp.json`: deep-merged (new entries added, existing preserved)
 
 ### Can I customize the output?
 
-The generated artifacts are standard Claude Code configuration files. Edit anything after generation — it's your configuration. The developer interview (Phase 2) is the main way to influence output before generation. For subsequent runs, `--overwrite` gives you a clean slate; without it, your manual edits to skills/hooks/agents are preserved.
+The generated artifacts are standard Claude Code configuration files. Edit anything after generation - it's your configuration. The developer interview (Phase 2) is the main way to influence output before generation. For subsequent runs, `--overwrite` gives you a clean slate; without it, your manual edits to skills/hooks/agents are preserved.
 
 ### What models are used?
 
@@ -337,11 +337,11 @@ Typically **15-30 minutes** depending on codebase size:
 - Phase 4: 3-8 minutes (two synthesis passes)
 - Phase 5: 1-3 minutes (validation + write)
 
-Large monorepos with 50+ directories can take up to 30 minutes. The run is fully resumable — if interrupted, rerun the same command and completed phases are skipped.
+Large monorepos with 50+ directories can take up to 30 minutes. The run is fully resumable - if interrupted, rerun the same command and completed phases are skipped.
 
 ### What about rate limits?
 
-Deep-dive agents run in batches of 8 to avoid API rate limits. If individual agents fail (e.g., due to rate limiting), the pipeline continues — failed agents are logged but don't abort the run.
+Deep-dive agents run in batches of 8 to avoid API rate limits. If individual agents fail (e.g., due to rate limiting), the pipeline continues - failed agents are logged but don't abort the run.
 
 ---
 
@@ -350,8 +350,8 @@ Deep-dive agents run in batches of 8 to avoid API rate limits. If individual age
 ### Required
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- `jq` — install via `brew install jq` (macOS), `apt install jq` (Linux), or `choco install jq` (Windows)
-- **Extra usage enabled** — the synthesis phase uses models with 1M token context. Enable extra usage at [claude.ai/settings/usage](https://claude.ai/settings/usage), otherwise synthesis will fail with "Extra usage is required for 1M context".
+- `jq` - install via `brew install jq` (macOS), `apt install jq` (Linux), or `choco install jq` (Windows)
+- **Extra usage enabled** - the synthesis phase uses models with 1M token context. Enable extra usage at [claude.ai/settings/usage](https://claude.ai/settings/usage), otherwise synthesis will fail with "Extra usage is required for 1M context".
 
 ### Platform Support
 
@@ -371,4 +371,4 @@ Built by [Joel Barmettler](https://joelbarmettler.xyz).
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0 - see [LICENSE](LICENSE).
