@@ -63,7 +63,7 @@ if [ -z "$DESC_LINE" ]; then
   ERRORS=$((ERRORS + 1))
 else
   DESC=$(awk -v start="$DESC_LINE" '
-    NR==start { sub(/^description: */, ""); desc=$0; next }
+    NR==start { sub(/^description: */, ""); sub(/^[>|]-? *$/, ""); desc=$0; next }
     NR>start && /^  / { sub(/^  /, ""); desc=desc " " $0; next }
     NR>start { exit }
     END { print desc }
@@ -106,8 +106,9 @@ if [ "$TOTAL_LINES" -gt 600 ]; then
   WARNINGS=$((WARNINGS + 1))
 fi
 
-# Codebase-specific references
-PATH_REFS=$(grep -cE '(`[a-zA-Z_./]+/[a-zA-Z_.]+`|apps/|packages/|src/|backend/|frontend/|scripts/|lib/)' "$SKILL_PATH" 2>/dev/null || true)
+# Codebase-specific references: backtick-wrapped filenames (with or without path),
+# or well-known directory names. Matches `app.py`, `src/routes.ts`, `tests/test_app.py`, etc.
+PATH_REFS=$(grep -cE '(`[a-zA-Z_./-]+\.[a-zA-Z]+`|`[a-zA-Z_./]+/[a-zA-Z_.]+`|apps/|packages/|src/|backend/|frontend/|scripts/|lib/|tests/)' "$SKILL_PATH" 2>/dev/null || true)
 PATH_REFS=${PATH_REFS:-0}
 echo "Codebase-specific path references: $PATH_REFS"
 

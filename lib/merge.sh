@@ -31,7 +31,7 @@ write_artifacts() {
         sub_content=$(jq -r ".subdirectory_claude_mds[$i].content" "$output")
 
         mkdir -p "$sub_path"
-        echo "$sub_content" > "$sub_path/CLAUDE.md"
+        printf '%s\n' "$sub_content" > "$sub_path/CLAUDE.md"
         log_success "Wrote $sub_path/CLAUDE.md"
     done
 
@@ -41,6 +41,12 @@ write_artifacts() {
     for i in $(seq 0 $((skill_count - 1))); do
         local name
         name=$(jq -r ".skills[$i].name" "$output")
+
+        # Skip null/empty names and names with path separators
+        if [[ -z "$name" || "$name" == "null" || "$name" == */* ]]; then
+            log_warn "Skipping skill with invalid name: '$name'"
+            continue
+        fi
 
         # Don't overwrite existing skills
         if [[ -f ".claude/skills/$name/SKILL.md" ]]; then
@@ -151,8 +157,6 @@ overwrite_existing() {
         -not -path './node_modules/*' \
         -not -path './vendor/*' \
         -delete 2>/dev/null
-    local removed_claude
-    removed_claude=$(find . -name "CLAUDE.md" -not -path './.ultrainit/*' 2>/dev/null | wc -l)
 
     # Remove .claude/ skills, agents, hooks (but preserve mcp.json and settings.json user config)
     rm -rf .claude/skills .claude/agents .claude/hooks
@@ -191,6 +195,12 @@ merge_settings() {
         local matcher
         matcher=$(jq -r ".settings_hooks[$i].matcher // empty" "$output")
 
+        # Skip entries with null/empty event or command
+        if [[ -z "$event" || "$event" == "null" || -z "$command" || "$command" == "null" ]]; then
+            log_warn "Skipping settings hook with invalid event ('$event') or command ('$command')"
+            continue
+        fi
+
         local hook_entry
         if [[ -n "$matcher" ]]; then
             hook_entry=$(jq -n --arg cmd "$command" --arg m "$matcher" \
@@ -204,12 +214,28 @@ merge_settings() {
             '.hooks[$event] = (.hooks[$event] // []) + [$entry]')
     done
 
+    # If all entries were skipped (e.g., all had null events), don't write empty hooks
+    local valid_hook_count
+    valid_hook_count=$(echo "$hooks_json" | jq '.hooks | to_entries | length')
+    if [[ "$valid_hook_count" -eq 0 ]]; then
+        return 0
+    fi
+
     mkdir -p .claude
     if [[ -f .claude/settings.json ]]; then
-        # Deep merge: add new hooks, preserve existing
+        # Deep merge: concatenate hook arrays per event type, preserve other keys.
+        # jq's * operator replaces arrays, so we merge hooks manually.
         local existing
         existing=$(cat .claude/settings.json)
-        jq -s '.[0] * .[1]' <(echo "$existing") <(echo "$hooks_json") > .claude/settings.json
+        jq -n --argjson old "$existing" --argjson new "$hooks_json" '
+            ($old * ($new | del(.hooks))) |
+            .hooks = (
+                reduce ([$old.hooks // {}, $new.hooks // {} | keys[]] | unique)[] as $event (
+                    {};
+                    .[$event] = (($old.hooks[$event] // []) + ($new.hooks[$event] // []))
+                )
+            )
+        ' > .claude/settings.json
         log_success "Merged hooks into existing .claude/settings.json"
     else
         echo "$hooks_json" | jq '.' > .claude/settings.json

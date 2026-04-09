@@ -54,6 +54,7 @@ run_research() {
 
     # ── Run research agents in parallel ─────────────────────────
 
+    export AGENT_PHASE="research"
     local research_calls=()
 
     # Domain researcher
@@ -74,7 +75,7 @@ Research:
 Focus on version-specific, non-obvious information. Skip anything generic.' \
         '$schemas/domain-research.json' \
         'Read,WebSearch,WebFetch' \
-        sonnet")
+        $AGENT_MODEL")
 
     # MCP discoverer (skip if --skip-mcp)
     if [[ "$SKIP_MCP" != "true" ]]; then
@@ -97,7 +98,7 @@ Always recommend context7 (up-to-date library docs) and playwright (if frontend 
 Keep recommendations to 3-8 highly relevant servers.' \
             '$schemas/mcp-recommendations.json' \
             'Read,WebSearch,WebFetch' \
-            sonnet")
+            $AGENT_MODEL")
     fi
 
     if [[ ${#research_calls[@]} -gt 0 ]]; then

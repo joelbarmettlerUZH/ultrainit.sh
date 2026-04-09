@@ -44,6 +44,11 @@ export VALIDATION_BUDGET="${VALIDATION_BUDGET:-}"
 export AGENT_BUDGET="${AGENT_BUDGET:-}"
 
 compute_budgets() {
+    # Default to 100.00 if TOTAL_BUDGET is empty or non-numeric
+    if [[ -z "$TOTAL_BUDGET" ]] || ! echo "$TOTAL_BUDGET" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+        TOTAL_BUDGET="100.00"
+    fi
+
     GATHER_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_GATHER / 100" | bc)
     RESEARCH_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_RESEARCH / 100" | bc)
     SYNTH_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_SYNTHESIS / 100" | bc)
@@ -57,7 +62,17 @@ compute_budgets() {
 set_agent_budget() {
     local phase_budget="$1"
     local agent_count="$2"
-    [[ "$agent_count" -lt 1 ]] && agent_count=1
+
+    # Default phase_budget to 1.00 if empty or non-numeric
+    if [[ -z "$phase_budget" ]] || ! echo "$phase_budget" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+        phase_budget="1.00"
+    fi
+
+    # Ensure agent_count is a positive integer
+    if ! [[ "$agent_count" =~ ^[0-9]+$ ]] || [[ "$agent_count" -lt 1 ]]; then
+        agent_count=1
+    fi
+
     AGENT_BUDGET=$(echo "scale=2; $phase_budget / $agent_count" | bc)
     export AGENT_BUDGET
 }
@@ -65,12 +80,19 @@ set_agent_budget() {
 # ── Budget enforcement ──────────────────────────────────────────
 
 # Check if we've exceeded the total budget. Returns 0 if OK, 1 if over.
+# Reads per-agent cost files from $WORK_DIR/costs/ (one file per agent,
+# no shared file, so parallel agents can't corrupt each other's data).
 check_budget() {
-    local cost_file="$WORK_DIR/cost.log"
-    [[ ! -f "$cost_file" ]] && return 0
+    local cost_dir="$WORK_DIR/costs"
+    [[ ! -d "$cost_dir" ]] && return 0
+
+    # Guard: with nullglob, *.cost expands to nothing if no files exist,
+    # causing cat (no args) to block on stdin. Check for files first.
+    local cost_files=("$cost_dir"/*.cost)
+    [[ ${#cost_files[@]} -eq 0 || ! -f "${cost_files[0]}" ]] && return 0
 
     local spent
-    spent=$(awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' "$cost_file" 2>/dev/null || echo "0")
+    spent=$(cat "${cost_files[@]}" 2>/dev/null | awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' 2>/dev/null || echo "0")
 
     local over
     over=$(echo "$spent >= $TOTAL_BUDGET" | bc 2>/dev/null || echo "0")
@@ -84,10 +106,13 @@ check_budget() {
 
 # Get remaining budget
 get_remaining_budget() {
-    local cost_file="$WORK_DIR/cost.log"
+    local cost_dir="$WORK_DIR/costs"
     local spent="0"
-    if [[ -f "$cost_file" ]]; then
-        spent=$(awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' "$cost_file" 2>/dev/null || echo "0")
+    if [[ -d "$cost_dir" ]]; then
+        local cost_files=("$cost_dir"/*.cost)
+        if [[ ${#cost_files[@]} -gt 0 && -f "${cost_files[0]}" ]]; then
+            spent=$(cat "${cost_files[@]}" 2>/dev/null | awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' 2>/dev/null || echo "0")
+        fi
     fi
     echo "scale=2; $TOTAL_BUDGET - $spent" | bc 2>/dev/null || echo "$TOTAL_BUDGET"
 }
@@ -96,18 +121,38 @@ get_remaining_budget() {
 
 check_budget_sanity() {
     local model="$SYNTH_MODEL"
+    local agent_model="$AGENT_MODEL"
 
-    # Estimate minimum costs based on model
+    # Minimum viable budget depends on both gather model and synthesis model.
+    # Each claude -p call costs at least $0.05 (haiku) to $0.30 (sonnet) for
+    # schema caching alone. With 8 core agents + 2 synthesis passes minimum:
     local min_cost=10
     case "$model" in
         *opus*)  min_cost=25 ;;
         *sonnet*) min_cost=10 ;;
-        *haiku*) min_cost=5 ;;
+        *haiku*) min_cost=3 ;;
     esac
 
     if (( $(echo "$TOTAL_BUDGET < $min_cost" | bc 2>/dev/null || echo 0) )); then
         log_warn "Budget \$$TOTAL_BUDGET may be too low for model '$model' (recommended: \$$min_cost+)"
         log_warn "Consider increasing with --budget or using a cheaper model"
+    fi
+
+    # Check per-agent budget viability: gather phase splits across ~50 agents.
+    # If per-agent budget is below the minimum for a single API call, warn loudly.
+    local per_agent_budget
+    per_agent_budget=$(echo "scale=2; $GATHER_BUDGET / 50" | bc 2>/dev/null || echo "0")
+    local min_per_agent="0.10"
+    case "$agent_model" in
+        *opus*)  min_per_agent="0.50" ;;
+        *sonnet*) min_per_agent="0.20" ;;
+        *haiku*) min_per_agent="0.10" ;;
+    esac
+
+    if (( $(echo "$per_agent_budget < $min_per_agent" | bc 2>/dev/null || echo 0) )); then
+        log_error "Per-agent budget is \$$per_agent_budget — too low for even one $agent_model call (minimum ~\$$min_per_agent)"
+        log_error "Increase --budget to at least \$$(echo "scale=0; $min_per_agent * 50 / 0.5 + 1" | bc) or use a cheaper model"
+        exit 1
     fi
 }
 
@@ -233,7 +278,7 @@ setup_work_dir() {
     WORK_DIR="${target_dir}/.ultrainit"
     export WORK_DIR
 
-    mkdir -p "$WORK_DIR"/{findings/modules,synthesis/skills,synthesis/hooks,synthesis/subagents,logs,backups}
+    mkdir -p "$WORK_DIR"/{findings/modules,synthesis/skills,synthesis/hooks,synthesis/subagents,logs,backups,costs}
 
     # Add .ultrainit/ to .gitignore if not present
     if [[ -f "${target_dir}/.gitignore" ]]; then

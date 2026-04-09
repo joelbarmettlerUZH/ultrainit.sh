@@ -3,30 +3,35 @@
 
 # ── Cost tracking ───────────────────────────────────────────────
 
-# Append a cost entry to the cost log
+# Record cost for an agent. Each agent writes its own file to avoid
+# race conditions when agents run in parallel. Files are aggregated
+# by check_budget and print_cost_summary.
 record_cost() {
     local phase="$1"
     local agent="$2"
     local cost="$3"
-    local cost_file="$WORK_DIR/cost.log"
-    echo "$phase|$agent|$cost" >> "$cost_file"
+    local cost_dir="$WORK_DIR/costs"
+    mkdir -p "$cost_dir"
+    echo "$phase|$agent|$cost" > "$cost_dir/${agent}.cost"
 }
 
 # ── Agent runner ────────────────────────────────────────────────
 
 # Run a single claude -p agent with structured JSON output.
 #
-# Usage: run_agent <name> <prompt> <schema_file> <allowed_tools> [model]
+# Usage: run_agent <name> <prompt> <schema_file> <allowed_tools> [model] [phase]
 #
 # - Writes JSON output to $WORK_DIR/findings/<name>.json
 # - Skips if findings already exist (unless FORCE=true)
 # - Logs stderr to $WORK_DIR/logs/<name>.stderr
+# - phase defaults to AGENT_PHASE (if set) or "gather"
 run_agent() {
     local name="$1"
     local prompt="$2"
     local schema_file="$3"
     local allowed_tools="$4"
     local model="${5:-$AGENT_MODEL}"
+    local phase="${6:-${AGENT_PHASE:-gather}}"
     local output_file="$WORK_DIR/findings/${name}.json"
 
     # Resumability: skip if findings exist
@@ -63,28 +68,36 @@ run_agent() {
     # For large prompts, pipe via stdin to avoid "argument list too long"
     local raw_output
     local prompt_len=${#prompt}
+    local output_tmpfile="$WORK_DIR/logs/${name}.stdout"
 
     if [[ $prompt_len -gt 100000 ]]; then
-        raw_output=$(echo "$prompt" | claude -p - \
-            --model "$model" \
-            --output-format json \
-            --json-schema "$schema" \
-            --allowedTools "$allowed_tools" \
-            $system_prompt_flag \
-            --max-budget-usd "$AGENT_BUDGET" \
-            2>>"$stderr_file")
+        run_with_spinner \
+            "Agent $name running..." \
+            "$output_tmpfile" \
+            "$stderr_file" \
+            bash -c "echo \"\$1\" | claude -p - \
+                --model '$model' \
+                --output-format json \
+                --json-schema '$schema' \
+                --allowedTools '$allowed_tools' \
+                $system_prompt_flag \
+                --max-budget-usd '$AGENT_BUDGET'" _ "$prompt"
     else
-        raw_output=$(claude -p "$prompt" \
-            --model "$model" \
-            --output-format json \
-            --json-schema "$schema" \
-            --allowedTools "$allowed_tools" \
-            $system_prompt_flag \
-            --max-budget-usd "$AGENT_BUDGET" \
-            2>>"$stderr_file")
+        run_with_spinner \
+            "Agent $name running..." \
+            "$output_tmpfile" \
+            "$stderr_file" \
+            claude -p "$prompt" \
+                --model "$model" \
+                --output-format json \
+                --json-schema "$schema" \
+                --allowedTools "$allowed_tools" \
+                $system_prompt_flag \
+                --max-budget-usd "$AGENT_BUDGET"
     fi
 
     local exit_code=$?
+    raw_output=$(cat "$output_tmpfile" 2>/dev/null)
 
     if [[ $exit_code -ne 0 ]]; then
         # claude often writes errors to stdout, not stderr; capture both
@@ -102,15 +115,25 @@ run_agent() {
     local is_error
     is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
     if [[ "$is_error" == "true" ]]; then
-        log_error "Agent $name returned an error: $(echo "$raw_output" | jq -r '.result // "unknown"')"
+        # Extract the most useful error message from the response
+        local error_msg
+        error_msg=$(echo "$raw_output" | jq -r '
+            (if (.errors // [] | length) > 0 then (.errors | join("; "))
+             elif .result then .result
+             else "unknown error" end)
+        ' 2>/dev/null)
+        log_error "Agent $name failed: $error_msg"
         echo "$raw_output" >> "$stderr_file"
+        if [[ "$VERBOSE" == "true" ]]; then
+            cat "$stderr_file" >&2
+        fi
         return 1
     fi
 
     # Track cost
     local cost
     cost=$(echo "$raw_output" | jq -r '.total_cost_usd // 0' 2>/dev/null)
-    record_cost "gather" "$name" "$cost"
+    record_cost "$phase" "$name" "$cost"
 
     # Extract structured output from claude response
     # With --json-schema, output is in .structured_output; without, in .result
@@ -167,6 +190,7 @@ export FORCE="$FORCE"
 export VERBOSE="$VERBOSE"
 export AGENT_MODEL="$AGENT_MODEL"
 export AGENT_BUDGET="$AGENT_BUDGET"
+export AGENT_PHASE="${AGENT_PHASE:-gather}"
 export TOTAL_BUDGET="$TOTAL_BUDGET"
 
 source "$SCRIPT_DIR/lib/utils.sh"
@@ -196,4 +220,95 @@ AGENT_SCRIPT
         log_warn "$failures agent(s) failed. Check logs in $WORK_DIR/logs/"
     fi
     return $failures
+}
+
+# ── Failure diagnostics ────────────────────────────────────────
+
+# Collect error logs from failed agents and ask Claude to diagnose.
+# Usage: diagnose_phase_failure <phase_name> <agent_names...>
+#
+# Looks at stderr log files for each named agent. If any contain errors,
+# sends them to a lightweight Claude call that produces a human-readable
+# diagnosis with actionable steps.
+diagnose_phase_failure() {
+    local phase="$1"
+    shift
+    local failed_agents=("$@")
+
+    if [[ ${#failed_agents[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    # Collect error context from log files
+    local error_context=""
+    for agent_name in "${failed_agents[@]}"; do
+        local log_file="$WORK_DIR/logs/${agent_name}.stderr"
+        if [[ -f "$log_file" ]] && [[ -s "$log_file" ]]; then
+            # Truncate to last 50 lines per agent to keep context manageable
+            local log_content
+            log_content=$(tail -50 "$log_file")
+            error_context+="=== Agent: ${agent_name} ===
+${log_content}
+
+"
+        else
+            error_context+="=== Agent: ${agent_name} ===
+(no error output captured)
+
+"
+        fi
+    done
+
+    echo ""
+    log_error "${#failed_agents[@]} step(s) failed in phase '$phase': ${failed_agents[*]}"
+    echo ""
+
+    # Try to get Claude to diagnose — but if Claude itself is the problem,
+    # fall back to just showing the raw logs
+    local diagnosis=""
+    if command -v claude &>/dev/null; then
+        diagnosis=$(claude -p "You are a diagnostic assistant for ultrainit, a bash tool that uses Claude Code to analyze codebases.
+
+The following agents failed during the '$phase' phase. Analyze the error logs below and provide:
+1. A one-line root cause (e.g. 'Authentication expired', 'Rate limit hit', 'Missing dependency: bc')
+2. What the user should do to fix it (concrete shell commands when possible)
+3. Whether this is likely transient (retry may work) or persistent (needs user action)
+
+Keep your response under 10 lines. Be direct and actionable.
+
+Failed agents: ${failed_agents[*]}
+
+Error logs:
+${error_context}" \
+            --model haiku \
+            --output-format text \
+            --max-turns 1 \
+            --allowedTools "" \
+            --bare \
+            --max-budget-usd 0.05 \
+            2>/dev/null) || true
+    fi
+
+    if [[ -n "$diagnosis" ]]; then
+        echo -e "${BOLD}Diagnosis:${RESET}"
+        echo "$diagnosis"
+    else
+        # Claude couldn't diagnose (maybe it's the thing that's broken) — show raw logs
+        echo -e "${BOLD}Error logs from failed agents:${RESET}"
+        echo "$error_context"
+    fi
+    echo ""
+}
+
+# Check which agents from a list have findings files and which don't.
+# Usage: get_failed_agents <agent_name1> <agent_name2> ...
+# Prints the names of agents whose findings files are missing.
+get_failed_agents() {
+    local failed=()
+    for agent_name in "$@"; do
+        if [[ ! -f "$WORK_DIR/findings/${agent_name}.json" ]]; then
+            failed+=("$agent_name")
+        fi
+    done
+    echo "${failed[@]}"
 }

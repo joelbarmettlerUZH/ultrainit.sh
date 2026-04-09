@@ -1,0 +1,9 @@
+{
+  "claude_md": "# Test Project\n\n## Overview\nA full-stack web application for managing tasks.\n\n## Commands\n\n| Command | Purpose |\n|---------|----------|\n| `npm run build` | Build the project |\n| `npm test` | Run tests |\n| `npm run lint` | Run linter |\n\n## Architecture\n\nThe project follows a repository pattern for data access.\nBarrel exports are used via `index.ts` files.\n\n## Conventions\n\n- Use TypeScript strict mode\n- Follow conventional commits (e.g. `feat:`, `fix:`)\n- Reference tickets as PROJ-123\n\n## Don'ts\n\n- Never edit migration files directly. Instead, create a new migration.\n- Don't modify `.env` files. Instead, update `.env.example` and copy.\n\n## Testing\n\nRun `npm test` for the full suite.\nUse `npm test -- --watch` for development.\n\n## Deployment\n\nDeployed via Docker + AWS ECS.\nCI/CD pipeline runs on push to main.\n\n## Additional lines to meet length requirements\n\nLine 1 of padding\nLine 2 of padding\nLine 3 of padding\nLine 4 of padding\nLine 5 of padding\nLine 6 of padding\nLine 7 of padding\nLine 8 of padding\nLine 9 of padding\nLine 10 of padding\nLine 11 of padding\nLine 12 of padding\nLine 13 of padding\nLine 14 of padding\nLine 15 of padding\nLine 16 of padding\nLine 17 of padding\nLine 18 of padding\nLine 19 of padding\nLine 20 of padding",
+  "subdirectory_claude_mds": [
+    {
+      "path": "src",
+      "content": "# src/\n\nMain application source code.\n\n## Patterns\n- Repository pattern for data access\n- Barrel exports via index.ts"
+    }
+  ]
+}
