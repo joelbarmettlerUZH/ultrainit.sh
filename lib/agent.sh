@@ -3,13 +3,16 @@
 
 # ── Cost tracking ───────────────────────────────────────────────
 
-# Append a cost entry to the cost log
+# Record cost for an agent. Each agent writes its own file to avoid
+# race conditions when agents run in parallel. Files are aggregated
+# by check_budget and print_cost_summary.
 record_cost() {
     local phase="$1"
     local agent="$2"
     local cost="$3"
-    local cost_file="$WORK_DIR/cost.log"
-    echo "$phase|$agent|$cost" >> "$cost_file"
+    local cost_dir="$WORK_DIR/costs"
+    mkdir -p "$cost_dir"
+    echo "$phase|$agent|$cost" > "$cost_dir/${agent}.cost"
 }
 
 # ── Agent runner ────────────────────────────────────────────────
@@ -236,7 +239,7 @@ ${log_content}
     done
 
     echo ""
-    log_error "${#failed_agents[@]} agent(s) failed in phase '$phase': ${failed_agents[*]}"
+    log_error "${#failed_agents[@]} step(s) failed in phase '$phase': ${failed_agents[*]}"
     echo ""
 
     # Try to get Claude to diagnose — but if Claude itself is the problem,

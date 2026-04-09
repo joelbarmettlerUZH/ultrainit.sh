@@ -269,7 +269,7 @@ ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{
 ├── synthesis/          # Synthesis pass outputs
 ├── logs/               # stderr from each agent
 ├── backups/            # Previous CLAUDE.md versions
-├── cost.log            # Per-agent cost tracking
+├── costs/              # Per-agent cost files (one per agent)
 └── state.json          # Phase completion tracking
 ```
 

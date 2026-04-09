@@ -95,15 +95,14 @@ iso_date() {
 # ── Cost reporting ──────────────────────────────────────────────
 
 print_cost_summary() {
-    local cost_file="$WORK_DIR/cost.log"
-    if [[ ! -f "$cost_file" ]]; then
+    local cost_dir="$WORK_DIR/costs"
+    if [[ ! -d "$cost_dir" ]] || ! ls "$cost_dir"/*.cost &>/dev/null; then
         return 0
     fi
 
     echo -e "\n${BOLD}Cost breakdown:${RESET}"
 
     local total=0
-    local phase_totals=()
     local current_phase=""
     local phase_sum=0
 
@@ -119,7 +118,7 @@ print_cost_summary() {
         fi
         phase_sum=$(echo "$phase_sum + $cost" | bc 2>/dev/null || echo "$phase_sum")
         total=$(echo "$total + $cost" | bc 2>/dev/null || echo "$total")
-    done < <(sort "$cost_file")
+    done < <(cat "$cost_dir"/*.cost 2>/dev/null | sort)
 
     # Print last phase
     if [[ -n "$current_phase" ]]; then
