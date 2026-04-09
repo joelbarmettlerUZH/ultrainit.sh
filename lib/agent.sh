@@ -197,3 +197,94 @@ AGENT_SCRIPT
     fi
     return $failures
 }
+
+# ── Failure diagnostics ────────────────────────────────────────
+
+# Collect error logs from failed agents and ask Claude to diagnose.
+# Usage: diagnose_phase_failure <phase_name> <agent_names...>
+#
+# Looks at stderr log files for each named agent. If any contain errors,
+# sends them to a lightweight Claude call that produces a human-readable
+# diagnosis with actionable steps.
+diagnose_phase_failure() {
+    local phase="$1"
+    shift
+    local failed_agents=("$@")
+
+    if [[ ${#failed_agents[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    # Collect error context from log files
+    local error_context=""
+    for agent_name in "${failed_agents[@]}"; do
+        local log_file="$WORK_DIR/logs/${agent_name}.stderr"
+        if [[ -f "$log_file" ]] && [[ -s "$log_file" ]]; then
+            # Truncate to last 50 lines per agent to keep context manageable
+            local log_content
+            log_content=$(tail -50 "$log_file")
+            error_context+="=== Agent: ${agent_name} ===
+${log_content}
+
+"
+        else
+            error_context+="=== Agent: ${agent_name} ===
+(no error output captured)
+
+"
+        fi
+    done
+
+    echo ""
+    log_error "${#failed_agents[@]} agent(s) failed in phase '$phase': ${failed_agents[*]}"
+    echo ""
+
+    # Try to get Claude to diagnose — but if Claude itself is the problem,
+    # fall back to just showing the raw logs
+    local diagnosis=""
+    if command -v claude &>/dev/null; then
+        diagnosis=$(claude -p "You are a diagnostic assistant for ultrainit, a bash tool that uses Claude Code to analyze codebases.
+
+The following agents failed during the '$phase' phase. Analyze the error logs below and provide:
+1. A one-line root cause (e.g. 'Authentication expired', 'Rate limit hit', 'Missing dependency: bc')
+2. What the user should do to fix it (concrete shell commands when possible)
+3. Whether this is likely transient (retry may work) or persistent (needs user action)
+
+Keep your response under 10 lines. Be direct and actionable.
+
+Failed agents: ${failed_agents[*]}
+
+Error logs:
+${error_context}" \
+            --model haiku \
+            --output-format text \
+            --max-turns 1 \
+            --allowedTools "" \
+            --bare \
+            --max-budget-usd 0.05 \
+            2>/dev/null) || true
+    fi
+
+    if [[ -n "$diagnosis" ]]; then
+        echo -e "${BOLD}Diagnosis:${RESET}"
+        echo "$diagnosis"
+    else
+        # Claude couldn't diagnose (maybe it's the thing that's broken) — show raw logs
+        echo -e "${BOLD}Error logs from failed agents:${RESET}"
+        echo "$error_context"
+    fi
+    echo ""
+}
+
+# Check which agents from a list have findings files and which don't.
+# Usage: get_failed_agents <agent_name1> <agent_name2> ...
+# Prints the names of agents whose findings files are missing.
+get_failed_agents() {
+    local failed=()
+    for agent_name in "$@"; do
+        if [[ ! -f "$WORK_DIR/findings/${agent_name}.json" ]]; then
+            failed+=("$agent_name")
+        fi
+    done
+    echo "${failed[@]}"
+}

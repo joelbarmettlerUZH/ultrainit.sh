@@ -19,7 +19,7 @@ gather_evidence() {
 
     log_progress "Stage 1: Core analysis + structure mapping..."
 
-    # Allow some agent failures without aborting (|| true prevents set -e from killing us)
+    # Run all core agents in parallel; individual failures are tolerated
     run_agents_parallel \
         "run_agent identity \
             'Analyze this codebase. Determine the project identity: name, description, languages, frameworks, monorepo structure, deployment target, and existing AI config files.' \
@@ -61,12 +61,49 @@ gather_evidence() {
             '$schemas/structure-scout.json' \
             'Bash(find:*),Bash(ls:*),Bash(wc:*),Read' \
             sonnet" \
-        || log_warn "Some Stage 1 agents failed (non-fatal)"
+        || true
+
+    # ── Check for critical failures before proceeding ──────────
+    # identity and structure-scout are required for downstream phases.
+    # If more than 3 agents failed overall, something systemic is wrong.
+
+    local core_agents=(identity commands git-forensics patterns tooling docs-scanner security-scan structure-scout)
+    local critical_agents=(identity structure-scout)
+    local failed_agents
+    failed_agents=($(get_failed_agents "${core_agents[@]}"))
+    local fail_count=${#failed_agents[@]}
+
+    # Check critical agents first
+    local critical_failed=()
+    for agent in "${critical_agents[@]}"; do
+        if [[ ! -f "$WORK_DIR/findings/${agent}.json" ]]; then
+            critical_failed+=("$agent")
+        fi
+    done
+
+    if [[ ${#critical_failed[@]} -gt 0 ]]; then
+        log_error "Critical agent(s) failed: ${critical_failed[*]}"
+        log_error "These are required for synthesis. Cannot continue."
+        diagnose_phase_failure "gather" "${failed_agents[@]}"
+        log_info "Fix the issue and re-run ultrainit. Successfully completed agents will be skipped."
+        return 1
+    fi
+
+    if [[ $fail_count -ge 3 ]]; then
+        log_error "$fail_count of ${#core_agents[@]} agents failed. This suggests a systemic issue."
+        diagnose_phase_failure "gather" "${failed_agents[@]}"
+        log_info "Fix the issue and re-run ultrainit. Successfully completed agents will be skipped."
+        return 1
+    fi
+
+    if [[ $fail_count -gt 0 ]]; then
+        log_warn "$fail_count agent(s) failed: ${failed_agents[*]} (continuing with partial results)"
+    fi
 
     # ── Stage 2: Deep-dive agents per directory of interest ─────
 
     run_deep_dive_agents \
-        || log_warn "Some Stage 2 agents failed (non-fatal)"
+        || log_warn "Some Stage 2 deep-dive agents failed (non-fatal)"
 
     mark_phase_complete "gather"
     return 0

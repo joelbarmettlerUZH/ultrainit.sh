@@ -2,11 +2,11 @@
 
 **A shell-native tool that uses Claude Code itself to deeply analyze any codebase and generate a complete Claude Code configuration — CLAUDE.md, skills, hooks, subagents, commands, and MCP servers.**
 
-No Python. No npm. No dependencies beyond `claude` and standard Unix tools. Runs on macOS, Linux, and Windows (Git Bash / WSL).
+No Python. No npm. No dependencies beyond `claude`, `jq`, and standard Unix tools (`git`, `bc`, `mktemp`, `sed`, `awk`, `grep`). Runs on macOS, Linux, and Windows (Git Bash / WSL).
 
 ```bash
 # One command. Any codebase.
-curl -sL https://raw.githubusercontent.com/joelbarmettlerUZH/ultrainit/main/ultrainit.sh | bash
+curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/latest/download/ultrainit.sh | bash
 ```
 
 ---
@@ -46,14 +46,15 @@ The result: a `.claude/` directory and `CLAUDE.md` that would take a human engin
 │                                                          │
 │  Phase 3: RESEARCH  (claude -p with web access)         │
 │  ┌──────────┐ ┌──────────┐                              │
-│  │ domain   │ │framework │                              │
-│  │ research │ │ research │                              │
+│  │ domain   │ │  MCP     │                              │
+│  │ research │ │ discovery│                              │
 │  └────┬─────┘ └────┬─────┘                              │
 │       │             │                                    │
-│  Phase 4: SYNTHESIZE  (one heavy claude -p call)        │
+│  Phase 4: SYNTHESIZE  (two 1M context passes)           │
 │  ┌──────────────────────────────────────────────────┐    │
-│  │  All findings + developer answers + research      │    │
-│  │  → condensed into final CLAUDE.md, skills, etc.   │    │
+│  │  Pass 1: All findings → CLAUDE.md files           │    │
+│  │  Pass 2: CLAUDE.md + findings → skills, hooks,    │    │
+│  │          subagents, MCP config                     │    │
 │  └──────────────────────────────────────────────────┘    │
 │                                                          │
 │  Phase 5: VALIDATE & WRITE                              │
@@ -66,7 +67,7 @@ The result: a `.claude/` directory and `CLAUDE.md` that would take a human engin
 
 ### Why Shell + Claude Code
 
-- **Zero dependencies.** If you have `claude` installed, you have everything.
+- **Minimal dependencies.** `claude`, `jq`, and standard Unix tools. The script checks everything at startup.
 - **Claude is better at understanding code than any static analysis tool.** Instead of reimplementing tree-sitter parsers and AST walkers, we give Claude the code and let it reason.
 - **Claude can search the web.** Domain knowledge, framework best practices, MCP server discovery — Claude already has these capabilities built in.
 - **Structured JSON output.** `claude -p --output-format json --json-schema '{...}'` gives us typed, parseable results from every agent call.
@@ -81,48 +82,53 @@ The result: a `.claude/` directory and `CLAUDE.md` that would take a human engin
 
 ```
 ultrainit/
-├── ultrainit.sh                   # Main entry point
+├── ultrainit.sh                   # Main entry point (CLI, phase orchestration)
 ├── lib/
-│   ├── config.sh                   # Configuration and defaults
-│   ├── agent.sh                    # Agent spawning helpers
+│   ├── config.sh                   # Configuration, defaults, dependency checks, budget
+│   ├── agent.sh                    # Agent spawning, parallel execution, failure diagnostics
 │   ├── gather.sh                   # Phase 1: evidence gathering agents
 │   ├── ask.sh                      # Phase 2: interactive questions
 │   ├── research.sh                 # Phase 3: web research agents
-│   ├── synthesize.sh               # Phase 4: synthesis agent
-│   ├── validate.sh                 # Phase 5: validation + write
-│   ├── merge.sh                    # Merge with existing .claude/ config
-│   ├── mcp.sh                      # MCP server discovery
-│   └── utils.sh                    # Logging, progress, JSON helpers
+│   ├── synthesize.sh               # Phase 4: two-pass synthesis
+│   ├── validate.sh                 # Phase 5: validation + revision
+│   ├── merge.sh                    # Merge/write artifacts to .claude/ config
+│   └── utils.sh                    # Logging, progress, JSON helpers, cost reporting
 ├── schemas/                        # JSON schemas for structured output
 │   ├── identity.json
 │   ├── commands.json
 │   ├── git-forensics.json
 │   ├── patterns.json
+│   ├── tooling.json
+│   ├── docs.json
+│   ├── security.json
+│   ├── structure-scout.json
 │   ├── module-analysis.json
 │   ├── domain-research.json
 │   ├── mcp-recommendations.json
-│   ├── claude-md.json
-│   ├── skill.json
-│   └── hook.json
+│   ├── synthesis-docs.json
+│   ├── synthesis-tooling.json
+│   └── synthesis-output.json
 ├── prompts/                        # System prompts for each agent
 │   ├── identity.md
 │   ├── commands.md
 │   ├── git-forensics.md
 │   ├── patterns.md
+│   ├── tooling.md
+│   ├── docs-scanner.md
+│   ├── security-scan.md
+│   ├── structure-scout.md
 │   ├── module-analyzer.md
 │   ├── domain-researcher.md
 │   ├── mcp-discoverer.md
 │   ├── synthesizer.md
-│   └── reviewer.md
-├── templates/                      # Jinja-like templates (envsubst)
-│   ├── hook-autoformat.sh.tmpl
-│   ├── hook-typecheck.sh.tmpl
-│   ├── hook-file-guard.sh.tmpl
-│   └── hook-force-push-block.sh.tmpl
+│   ├── synthesizer-docs.md
+│   └── synthesizer-tooling.md
 ├── scripts/
 │   ├── validate-skill.sh           # Skill quality validator
 │   └── validate-subagent.sh        # Subagent quality validator
-├── install.sh                      # Self-installer (curl-pipe-bash)
+├── docs/
+│   ├── logo.png
+│   └── diagram.png
 ├── README.md
 ├── LICENSE
 └── CLAUDE.md                       # We eat our own dogfood
@@ -144,51 +150,80 @@ run_agent() {
     local prompt="$2"         # The task prompt
     local schema_file="$3"    # Path to JSON schema
     local allowed_tools="$4"  # Tool permissions
-    local model="${5:-sonnet}" # Model alias
+    local model="${5:-$AGENT_MODEL}" # Model alias
     local output_file="$WORK_DIR/findings/${name}.json"
 
-    # Skip if findings already exist (resumability)
+    # Resumability: skip if findings exist
     if [[ -f "$output_file" ]] && [[ "$FORCE" != "true" ]]; then
         log_info "Skipping $name (findings exist). Use --force to rerun."
         return 0
     fi
 
-    local schema
-    schema=$(cat "$schema_file")
-
-    local system_prompt_file="$SCRIPT_DIR/prompts/${name}.md"
-    local system_prompt_flag=""
-    if [[ -f "$system_prompt_file" ]]; then
-        system_prompt_flag="--append-system-prompt-file $system_prompt_file"
-    fi
-
-    log_progress "Running agent: $name (model: $model)"
-
-    claude -p "$prompt" \
-        --model "$model" \
-        --output-format json \
-        --json-schema "$schema" \
-        --allowedTools "$allowed_tools" \
-        $system_prompt_flag \
-        --max-budget-usd "$AGENT_BUDGET" \
-        2>>"$WORK_DIR/logs/${name}.stderr" \
-        | jq -r '.structured_output // .result' \
-        > "$output_file"
-
-    local exit_code=$?
-    if [[ $exit_code -ne 0 ]]; then
-        log_error "Agent $name failed (exit $exit_code). See $WORK_DIR/logs/${name}.stderr"
+    # Budget enforcement
+    if ! check_budget 2>/dev/null; then
+        log_warn "Skipping $name (budget exhausted)"
         return 1
     fi
 
-    log_success "Agent $name completed → $output_file"
+    # For large prompts (>100KB), pipe via stdin to avoid arg length limits
+    local raw_output
+    if [[ ${#prompt} -gt 100000 ]]; then
+        raw_output=$(echo "$prompt" | claude -p - ...)
+    else
+        raw_output=$(claude -p "$prompt" \
+            --model "$model" \
+            --output-format json \
+            --json-schema "$schema" \
+            --allowedTools "$allowed_tools" \
+            $system_prompt_flag \
+            --max-budget-usd "$AGENT_BUDGET" \
+            2>>"$WORK_DIR/logs/${name}.stderr")
+    fi
+
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        # claude writes errors to stdout; capture for diagnostics
+        if [[ -n "$raw_output" ]]; then
+            echo "stdout: $raw_output" >> "$stderr_file"
+        fi
+        log_error "Agent $name failed (exit $exit_code). See $stderr_file"
+        return 1
+    fi
+
+    # Extract structured output, validate, track cost
+    echo "$raw_output" | jq '.structured_output // .result // .' > "$output_file"
+    log_success "Agent $name completed -> $output_file"
 }
 
-# Run multiple agents in parallel
+# Run multiple agents in parallel via temp scripts.
+# Each child script explicitly sets all parent variables before sourcing
+# libs, so re-sourcing config.sh cannot overwrite computed values.
 run_agents_parallel() {
     local pids=()
+    local tmp_dir=$(mktemp -d)
+
     for agent_call in "$@"; do
-        eval "$agent_call" &
+        local script="$tmp_dir/agent-${idx}.sh"
+        cat > "$script" <<AGENT_SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Propagate parent state explicitly (literal values baked in)
+export WORK_DIR="$WORK_DIR"
+export SCRIPT_DIR="$SCRIPT_DIR"
+export TARGET_DIR="$TARGET_DIR"
+export FORCE="$FORCE"
+export VERBOSE="$VERBOSE"
+export AGENT_MODEL="$AGENT_MODEL"
+export AGENT_BUDGET="$AGENT_BUDGET"
+export TOTAL_BUDGET="$TOTAL_BUDGET"
+
+source "$SCRIPT_DIR/lib/utils.sh"
+source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/agent.sh"
+$agent_call
+AGENT_SCRIPT
+        bash "$script" &
         pids+=($!)
     done
 
@@ -196,11 +231,23 @@ run_agents_parallel() {
     for pid in "${pids[@]}"; do
         wait "$pid" || failures=$((failures + 1))
     done
-
-    if [[ $failures -gt 0 ]]; then
-        log_warn "$failures agent(s) failed. Check logs in $WORK_DIR/logs/"
-    fi
+    rm -rf "$tmp_dir"
     return $failures
+}
+
+# Collect error logs from failed agents and ask Claude to diagnose.
+diagnose_phase_failure() {
+    local phase="$1"; shift
+    local failed_agents=("$@")
+
+    # Collect last 50 lines of each agent's stderr log
+    # Call claude -p with haiku to interpret errors and suggest fixes
+    # Falls back to raw log output if Claude itself is broken
+}
+
+# Check which agents have missing findings files.
+get_failed_agents() {
+    # Returns names of agents whose findings files don't exist
 }
 ```
 
@@ -215,31 +262,26 @@ All intermediate state lives in `.ultrainit/` inside the project root:
 │   ├── commands.json
 │   ├── git-forensics.json
 │   ├── patterns.json
-│   ├── modules/
-│   │   ├── src-api.json
-│   │   ├── src-web.json
-│   │   └── packages-shared.json
+│   ├── tooling.json
+│   ├── docs-scanner.json
+│   ├── security-scan.json
+│   ├── structure-scout.json
+│   ├── module-src.json          # Deep-dive per directory
+│   ├── module-src-routes.json
 │   ├── domain-research.json
-│   ├── framework-research.json
-│   └── mcp-recommendations.json
+│   └── mcp-discovery.json
 ├── developer-answers.json
-├── synthesis/          # Combined/condensed outputs
-│   ├── claude-md.md
-│   ├── skills/
-│   │   └── *.json
-│   ├── hooks/
-│   │   └── *.json
-│   ├── subagents/
-│   │   └── *.json
-│   └── mcp-config.json
+├── synthesis/          # Synthesis pass outputs
+│   ├── output-docs.json         # Pass 1 output
+│   ├── output-tooling.json      # Pass 2 output
+│   └── output.json              # Merged final output
 ├── logs/               # stderr from each agent
 │   ├── identity.stderr
 │   ├── commands.stderr
+│   ├── synthesis-docs.stderr
 │   └── ...
 ├── backups/            # Backups of overwritten files
-│   └── 2026-04-04T14:30:00/
-│       ├── CLAUDE.md
-│       └── .claude/settings.json
+├── cost.log            # Per-agent cost tracking
 └── state.json          # Phase completion tracking (for resume)
 ```
 
@@ -420,40 +462,47 @@ Analyze the module at {module_path}. Determine:
 **Model:** sonnet
 **Schema:** Returns `ModuleAnalysis` per module
 
-### Parallel Execution
+### Parallel Execution and Failure Handling
+
+Phase 1 runs in two stages:
+
+**Stage 1:** All 8 core agents run in parallel. After completion, the pipeline checks for failures:
+- **Critical agents** (`identity`, `structure-scout`): if either fails, the phase aborts with a Claude-powered diagnosis
+- **Systemic failure** (3+ agents failed): aborts with diagnosis
+- **1-2 non-critical failures**: warns but continues with partial results
+- The phase is only marked complete if the above checks pass
+
+**Stage 2:** Based on the structure scout's map, deep-dive agents spawn for each important directory (parallel batches of 8).
+
+On re-run after a failure, `run_agent` skips agents whose findings files already exist. Only the failed agents are retried.
 
 ```bash
-# lib/gather.sh
+# lib/gather.sh — simplified
 
 gather_evidence() {
-    log_phase "Phase 1: Gathering evidence"
+    if is_phase_complete "gather" && [[ "$FORCE" != "true" ]]; then
+        return 0
+    fi
 
+    # Stage 1: 8 core agents in parallel
     run_agents_parallel \
-        'run_agent identity "..." schemas/identity.json "Read,Bash(find:*),Bash(ls:*),Bash(cat:*),Bash(head:*)" haiku' \
-        'run_agent commands "..." schemas/commands.json "Read,Bash(find:*),Bash(cat:*),Bash(grep:*),Bash(jq:*)" haiku' \
-        'run_agent git-forensics "..." schemas/git-forensics.json "Bash(git:*)" sonnet' \
-        'run_agent patterns "..." schemas/patterns.json "Read,Bash(find:*),Bash(grep:*),Glob" sonnet' \
-        'run_agent tooling "..." schemas/tooling.json "Read,Bash(find:*),Bash(cat:*),Bash(ls:*)" haiku' \
-        'run_agent docs-scanner "..." schemas/docs.json "Read,Bash(find:*),Bash(head:*),Bash(wc:*)" haiku' \
-        'run_agent security-scan "..." schemas/security.json "Read,Bash(find:*),Bash(grep:*),Bash(ls:*)" haiku'
+        "run_agent identity '...' '$schemas/identity.json' '...' haiku" \
+        "run_agent commands '...' '$schemas/commands.json' '...' haiku" \
+        "run_agent git-forensics '...' '$schemas/git-forensics.json' '...' sonnet" \
+        "run_agent patterns '...' '$schemas/patterns.json' '...' sonnet" \
+        "run_agent tooling '...' '$schemas/tooling.json' '...' haiku" \
+        "run_agent docs-scanner '...' '$schemas/docs.json' '...' haiku" \
+        "run_agent security-scan '...' '$schemas/security.json' '...' haiku" \
+        "run_agent structure-scout '...' '$schemas/structure-scout.json' '...' sonnet" \
+        || true
 
-    # Then run module analyzers (parallel, one per detected module)
-    local modules
-    modules=$(jq -r '.packages[]?.path // empty' "$WORK_DIR/findings/identity.json" 2>/dev/null)
-    if [[ -z "$modules" ]]; then
-        modules=$(find . -maxdepth 1 -type d -not -name '.*' -not -name node_modules | tail -n +2)
-    fi
+    # Check for critical failures before proceeding
+    local failed_agents=($(get_failed_agents identity commands git-forensics ...))
+    # Abort if identity or structure-scout failed, or if 3+ agents failed
+    # Diagnose failures with Claude and exit
 
-    local module_calls=()
-    for mod in $modules; do
-        local safe_name
-        safe_name=$(echo "$mod" | tr '/' '-' | tr '.' '_')
-        module_calls+=("run_agent module-${safe_name} \"Analyze module at ${mod}\" schemas/module-analysis.json \"Read,Bash(find:*),Bash(grep:*),Bash(cat:*)\" sonnet")
-    done
-
-    if [[ ${#module_calls[@]} -gt 0 ]]; then
-        run_agents_parallel "${module_calls[@]}"
-    fi
+    # Stage 2: deep-dive agents per important directory
+    run_deep_dive_agents || log_warn "Some deep-dive agents failed (non-fatal)"
 
     mark_phase_complete "gather"
 }
@@ -465,58 +514,22 @@ gather_evidence() {
 
 Interactive terminal questions for knowledge that code analysis can't provide.
 
+Five questions, each using the `ask_question` helper which supports proposed answers (from Phase 1 findings) with Enter-to-accept:
+
 ```bash
 # lib/ask.sh
 
 ask_developer() {
-    log_phase "Phase 2: Developer interview"
+    # Skip if already complete or non-interactive
+    # When piped from curl, reads from /dev/tty instead of stdin
 
-    if [[ "$NON_INTERACTIVE" == "true" ]]; then
-        log_info "Non-interactive mode. Skipping developer questions."
-        echo '{}' > "$WORK_DIR/developer-answers.json"
-        mark_phase_complete "ask"
-        return
-    fi
-
-    local answers="{}"
-
-    echo ""
-    echo "━━━ I have a few questions that code analysis can't answer ━━━"
-    echo ""
-
-    # Question 1: Project purpose
-    local identity_desc
-    identity_desc=$(jq -r '.description // empty' "$WORK_DIR/findings/identity.json" 2>/dev/null)
-    echo "I detected this project might be: ${identity_desc:-'(unknown)'}"
-    read -rp "What is the primary purpose of this project? (Enter to accept, or type your own): " purpose
-    purpose="${purpose:-$identity_desc}"
-    answers=$(echo "$answers" | jq --arg v "$purpose" '.project_purpose = $v')
-
-    # Question 2: Deployment target
-    read -rp "Where is this deployed? (e.g., Vercel, AWS, self-hosted Docker): " deploy
-    answers=$(echo "$answers" | jq --arg v "$deploy" '.deployment_target = $v')
-
-    # Question 3: External services
-    read -rp "External services/APIs this integrates with? (comma-separated, or Enter to skip): " services
-    answers=$(echo "$answers" | jq --arg v "$services" '.external_services = $v')
-
-    # Question 4: What Claude should NEVER do
-    echo ""
-    echo "What should Claude NEVER do in this codebase?"
-    echo "(e.g., 'never modify migrations directly', 'never bypass auth')"
-    read -rp "> " never_do
-    answers=$(echo "$answers" | jq --arg v "$never_do" '.never_do = $v')
-
-    # Question 5: Common mistakes
-    read -rp "Common mistakes new developers make? (or Enter to skip): " mistakes
-    answers=$(echo "$answers" | jq --arg v "$mistakes" '.common_mistakes = $v')
-
-    # Question 6: Anything else
-    read -rp "Anything else Claude should know about this project? (or Enter to skip): " extra
-    answers=$(echo "$answers" | jq --arg v "$extra" '.additional_context = $v')
+    ask_question purpose "In one sentence, what does this project do?" "$identity_desc"
+    ask_question deploy  "How is this deployed?"
+    ask_question never_do "What should Claude NEVER do?"
+    ask_question mistakes "What trips up new developers on this project?"
+    ask_question extra   "Anything else important?"
 
     echo "$answers" > "$WORK_DIR/developer-answers.json"
-    log_success "Developer answers saved"
     mark_phase_complete "ask"
 }
 ```
@@ -549,17 +562,13 @@ run_agent domain-research \
 
 ```bash
 run_agent mcp-discovery \
-    "This project uses these dependencies and services:
-     $(jq -r '.frameworks | map(.name) | join(", ")' "$WORK_DIR/findings/identity.json")
-     External services: $(jq -r '.external_services' "$WORK_DIR/developer-answers.json")
-
-     Search the MCP server registry at https://registry.modelcontextprotocol.io
-     and find MCP servers that would be useful for developing this project.
-     For each recommended server: provide the npm/pip package name, what it does,
-     and how to configure it in .claude/mcp.json.
-     Only recommend servers that are directly relevant to the detected stack." \
+    "Find MCP servers useful for developing this project.
+     Tech stack: ${tech_stack}
+     Use the MCP registry API: WebFetch https://registry.modelcontextprotocol.io/v0.1/servers?...
+     Always recommend context7 (library docs) and relevant database servers.
+     Keep recommendations to 3-8 highly relevant servers." \
     schemas/mcp-recommendations.json \
-    "Read,WebSearch,Bash(curl:*)" \
+    "Read,WebSearch,WebFetch" \
     sonnet
 ```
 
@@ -567,54 +576,28 @@ run_agent mcp-discovery \
 
 ## 6. Phase 4: SYNTHESIZE — The Heavy Thinking
 
-One large `claude -p` call with the `opus` or `sonnet` model that receives ALL findings and produces the final artifacts.
+Two focused `claude -p` calls using the 1M context model (default: `sonnet[1m]`). Splitting into two passes lets each focus deeply rather than trying to produce everything at once.
+
+**Pass 1 (Documentation):** Generates root CLAUDE.md and all subdirectory CLAUDE.md files. Receives full findings from all phases plus condensed module analyses.
+
+**Pass 2 (Tooling):** Generates skills, hooks, subagents, MCP server configurations, and settings.json wiring. Receives the generated CLAUDE.md from Pass 1 as source of truth, plus focused findings relevant to tooling.
+
+Each pass includes retry logic (up to 3 attempts) for transient API errors on large-context calls. If synthesis fails after retries, `diagnose_phase_failure` explains the error to the user. On re-run, gather/ask/research phases are skipped (already marked complete).
 
 ```bash
-# lib/synthesize.sh
+# lib/synthesize.sh — simplified
 
 synthesize() {
-    log_phase "Phase 4: Synthesis (this is the expensive step)"
+    # Pass 1: CLAUDE.md files
+    build_docs_context "$docs_context"       # all core findings + condensed modules
+    run_synthesis_pass "docs" ... || return 1
 
-    # Concatenate all findings into one context document
-    local context=""
-    context+="=== PROJECT IDENTITY ===\n$(cat "$WORK_DIR/findings/identity.json")\n\n"
-    context+="=== COMMANDS ===\n$(cat "$WORK_DIR/findings/commands.json")\n\n"
-    context+="=== GIT FORENSICS ===\n$(cat "$WORK_DIR/findings/git-forensics.json")\n\n"
-    context+="=== PATTERNS ===\n$(cat "$WORK_DIR/findings/patterns.json")\n\n"
-    context+="=== TOOLING ===\n$(cat "$WORK_DIR/findings/tooling.json")\n\n"
-    context+="=== DOCUMENTATION ===\n$(cat "$WORK_DIR/findings/docs-scanner.json")\n\n"
-    context+="=== SECURITY ===\n$(cat "$WORK_DIR/findings/security-scan.json")\n\n"
+    # Pass 2: Skills, hooks, subagents
+    build_tooling_context "$tooling_context"  # generated CLAUDE.md + tooling findings
+    run_synthesis_pass "tooling" ... || return 1
 
-    # Module analyses
-    for f in "$WORK_DIR/findings/module-"*.json; do
-        [[ -f "$f" ]] && context+="=== MODULE: $(basename "$f" .json) ===\n$(cat "$f")\n\n"
-    done
-
-    # Developer answers
-    context+="=== DEVELOPER ANSWERS ===\n$(cat "$WORK_DIR/developer-answers.json")\n\n"
-
-    # Research (if available)
-    [[ -f "$WORK_DIR/findings/domain-research.json" ]] && \
-        context+="=== DOMAIN RESEARCH ===\n$(cat "$WORK_DIR/findings/domain-research.json")\n\n"
-    [[ -f "$WORK_DIR/findings/mcp-discovery.json" ]] && \
-        context+="=== MCP RECOMMENDATIONS ===\n$(cat "$WORK_DIR/findings/mcp-discovery.json")\n\n"
-
-    # Write context to a temp file (too large for inline prompt)
-    echo -e "$context" > "$WORK_DIR/synthesis-context.txt"
-
-    # The synthesis prompt
-    cat "$WORK_DIR/synthesis-context.txt" | claude -p \
-        --model "${SYNTH_MODEL:-sonnet}" \
-        --output-format json \
-        --json-schema "$(cat schemas/synthesis-output.json)" \
-        --allowedTools "Read" \
-        --append-system-prompt-file prompts/synthesizer.md \
-        --max-budget-usd "$SYNTH_BUDGET" \
-        2>>"$WORK_DIR/logs/synthesis.stderr" \
-        | jq -r '.structured_output // .result' \
-        > "$WORK_DIR/synthesis/output.json"
-
-    log_success "Synthesis complete"
+    # Merge both passes into final output.json
+    merge_synthesis_passes
     mark_phase_complete "synthesize"
 }
 ```
@@ -630,13 +613,12 @@ must condense it into optimal Claude Code artifacts.
 
 ## Your outputs
 
-1. **CLAUDE.md** (root): Under 150 lines. Only rules that apply to >30%
-   of sessions. Every line must trace to evidence from the findings.
-   Follow the WHAT/WHY/HOW framework. Never duplicate linter rules.
-   Every prohibition must include an alternative.
+1. **CLAUDE.md** (root): Comprehensive (250-400 lines for a real project).
+   Every line must trace to evidence from the findings.
+   Never duplicate linter rules. Every prohibition must include an alternative.
 
-2. **Sub-directory CLAUDE.md files**: Only for modules with distinct
-   conventions. Under 60 lines each.
+2. **Sub-directory CLAUDE.md files**: For modules with distinct
+   conventions. Focused on what's specific to that directory.
 
 3. **Skills**: One per distinct functional area (e.g., api-development,
    database-migrations, frontend-components). Each must have:
@@ -664,8 +646,8 @@ must condense it into optimal Claude Code artifacts.
 
 ## Constraints
 
-- CLAUDE.md: <150 lines, <100 instructions, <2000 tokens
-- Skills: <300 lines each, codebase-specific, no generic advice
+- CLAUDE.md: comprehensive (250-400 lines for a real project), no generic phrases
+- Skills: codebase-specific, minimum 3 real file references, no generic advice
 - Don't include rules that linters/formatters already enforce
 - Reference real files in the codebase, not hypothetical paths
 - Every "Don't do X" must include "Do Y instead"
@@ -679,130 +661,17 @@ must condense it into optimal Claude Code artifacts.
 
 Run the validation scripts on generated skills and subagents:
 
-```bash
-validate_artifacts() {
-    log_phase "Phase 5a: Validating artifacts"
+Validation checks:
+- **CLAUDE.md:** minimum length (100+ lines), zero generic phrases, must contain code blocks, prohibitions must include alternatives
+- **Skills** (via `scripts/validate-skill.sh`): frontmatter format, minimum 3 codebase file references, verification section, no generic phrases
+- **Hooks:** shebang + `set -euo pipefail`, reads JSON from stdin, matching settings.json wiring
+- **Subagents** (via `scripts/validate-subagent.sh`): frontmatter, tool scoping, minimum 3 file references
 
-    local errors=0
-
-    # Validate each generated skill
-    local skills
-    skills=$(jq -r '.skills[]?.name // empty' "$WORK_DIR/synthesis/output.json")
-    for skill_name in $skills; do
-        local skill_dir="$WORK_DIR/synthesis/skills/$skill_name"
-        mkdir -p "$skill_dir"
-        jq -r ".skills[] | select(.name == \"$skill_name\") | .content" \
-            "$WORK_DIR/synthesis/output.json" > "$skill_dir/SKILL.md"
-
-        if ! bash "$SCRIPT_DIR/scripts/validate-skill.sh" "$skill_dir/SKILL.md"; then
-            errors=$((errors + 1))
-        fi
-    done
-
-    # Validate CLAUDE.md quality
-    local claude_md_lines
-    claude_md_lines=$(jq -r '.claude_md' "$WORK_DIR/synthesis/output.json" | wc -l)
-    if [[ $claude_md_lines -gt 150 ]]; then
-        log_warn "CLAUDE.md is $claude_md_lines lines (target: <150). Requesting condensation."
-        errors=$((errors + 1))
-    fi
-
-    if [[ $errors -gt 0 ]]; then
-        log_warn "$errors validation issues. Running revision agent..."
-        run_revision_agent
-    fi
-}
-```
-
-### Revision Agent
-
-If validation fails, a reviewer agent fixes the issues:
-
-```bash
-run_revision_agent() {
-    local issues
-    issues=$(cat "$WORK_DIR/logs/validation-issues.txt")
-
-    cat "$WORK_DIR/synthesis/output.json" | claude -p \
-        --model sonnet \
-        --output-format json \
-        --json-schema "$(cat schemas/synthesis-output.json)" \
-        --append-system-prompt "These artifacts failed validation with these issues:
-$issues
-
-Fix all issues and return the corrected artifacts. Do NOT change
-anything that passed validation." \
-        --allowedTools "Read" \
-        > "$WORK_DIR/synthesis/output-revised.json"
-
-    mv "$WORK_DIR/synthesis/output-revised.json" "$WORK_DIR/synthesis/output.json"
-}
-```
+If validation fails, a **revision agent** automatically fixes the failing skills/hooks and re-validates. Only the failed artifacts are revised; passing ones are preserved.
 
 ### Write Output
 
-```bash
-write_artifacts() {
-    log_phase "Phase 5b: Writing artifacts"
-
-    local output
-    output="$WORK_DIR/synthesis/output.json"
-
-    # Backup existing files
-    backup_existing
-
-    # Write CLAUDE.md
-    jq -r '.claude_md' "$output" > CLAUDE.md
-    log_success "Wrote CLAUDE.md ($(wc -l < CLAUDE.md) lines)"
-
-    # Write sub-directory CLAUDE.md files
-    jq -r '.subdirectory_claude_mds | to_entries[]? | "\(.key)\t\(.value)"' "$output" | \
-    while IFS=$'\t' read -r path content; do
-        mkdir -p "$(dirname "$path")"
-        echo "$content" > "$path/CLAUDE.md"
-        log_success "Wrote $path/CLAUDE.md"
-    done
-
-    # Write skills
-    jq -r '.skills[]?.name // empty' "$output" | while read -r name; do
-        local dir=".claude/skills/$name"
-        mkdir -p "$dir"
-        jq -r ".skills[] | select(.name == \"$name\") | .content" "$output" > "$dir/SKILL.md"
-        log_success "Wrote $dir/SKILL.md"
-    done
-
-    # Write hooks
-    jq -r '.hooks[]?.filename // empty' "$output" | while read -r filename; do
-        mkdir -p ".claude/hooks"
-        jq -r ".hooks[] | select(.filename == \"$filename\") | .content" "$output" > ".claude/hooks/$filename"
-        chmod +x ".claude/hooks/$filename"
-        log_success "Wrote .claude/hooks/$filename"
-    done
-
-    # Write subagents
-    jq -r '.subagents[]?.name // empty' "$output" | while read -r name; do
-        mkdir -p ".claude/agents"
-        jq -r ".subagents[] | select(.name == \"$name\") | .content" "$output" > ".claude/agents/${name}.md"
-        log_success "Wrote .claude/agents/${name}.md"
-    done
-
-    # Write/merge settings.json
-    merge_settings "$output"
-
-    # Write MCP config
-    if jq -e '.mcp_config' "$output" > /dev/null 2>&1; then
-        merge_mcp_config "$output"
-    fi
-
-    # Add .ultrainit/ to .gitignore
-    if ! grep -q '.ultrainit' .gitignore 2>/dev/null; then
-        echo '.ultrainit/' >> .gitignore
-    fi
-
-    log_success "All artifacts written!"
-    print_summary
-}
-```
+Artifacts are written to disk via `lib/merge.sh` with safe merge behavior (see section 8).
 
 ---
 
@@ -864,24 +733,26 @@ Usage: ultrainit.sh [OPTIONS] [PATH]
 Options:
   --non-interactive    Skip developer questions (for CI/headless)
   --force              Rerun all agents (ignore cached findings)
-  --model MODEL        Model for synthesis (default: sonnet)
-  --budget DOLLARS     Max USD per agent call (default: 5.00)
-  --synth-budget USD   Max USD for synthesis step (default: 20.00)
+  --overwrite          Remove existing config before analysis (backs up first). Implies --force.
+  --model MODEL        Model for synthesis (default: sonnet[1m])
+  --budget DOLLARS     Total budget for the entire run (default: 100.00).
+                       Automatically divided: 50% gather, 10% research, 30% synthesis, 10% validation.
   --skip-research      Skip web research phase
-  --skip-mcp           Skip MCP server discovery
+  --skip-mcp           Skip MCP server discovery only
   --dry-run            Run analysis but don't write files
   --verbose            Show agent stderr in terminal
   -h, --help           Show this help
 
 Examples:
-  ultrainit.sh                       # Interactive analysis of current dir
-  ultrainit.sh /path/to/project      # Analyze a specific project
-  ultrainit.sh --non-interactive     # Headless mode for CI
-  ultrainit.sh --force --model opus  # Full rerun with Opus synthesis
+  ultrainit.sh                            # Interactive, current dir
+  ultrainit.sh /path/to/project           # Analyze a specific project
+  ultrainit.sh --non-interactive          # Headless mode for CI
+  ultrainit.sh --overwrite                # Fresh generation, remove old config
+  ultrainit.sh --model 'opus[1m]'         # Use Opus 1M for synthesis
 
 Environment:
-  ULTRATHINK_MODEL     Default model for agents (default: sonnet)
-  ULTRATHINK_BUDGET    Default per-agent budget (default: 5.00)
+  ULTRAINIT_MODEL      Default model for gather agents (default: sonnet)
+  ULTRAINIT_BUDGET     Total budget in USD (default: 100.00)
 EOF
 }
 ```
@@ -892,188 +763,76 @@ EOF
 
 | Phase | Agents | Model | Estimated Cost |
 |---|---|---|---|
-| 1: Gather | 4× haiku, 3× sonnet | Mixed | $2–8 |
+| 1: Gather (core) | 4× haiku, 4× sonnet | Mixed | $2–5 |
+| 1: Gather (deep-dives) | 30-60× sonnet | sonnet | $20–40 |
 | 2: Ask | 0 (no LLM) | — | $0 |
-| 3: Research | 2× sonnet | sonnet | $1–4 |
-| 4: Synthesize | 1× sonnet/opus | Heavy | $3–15 |
-| 5: Validate/Revise | 0–1× sonnet | sonnet | $0–5 |
-| **Total** | | | **$6–32** |
+| 3: Research | 2× sonnet | sonnet | $1–3 |
+| 4: Synthesize | 2× sonnet[1m] | Heavy | $4–10 |
+| 5: Validate/Revise | 0–1× sonnet | sonnet | $0–1 |
+| **Total** | | | **$30–60** |
 
-With `--model opus` for synthesis: $15–50 total.
+With `--model 'opus[1m]'` for synthesis: $50–100 total.
 
-The `--max-budget-usd` flag on each `claude -p` call prevents runaway spending.
+The total budget (`--budget`, default $100) is automatically divided across phases (50% gather, 10% research, 30% synthesis, 10% validation) and split equally among agents within each phase. `--max-budget-usd` on each `claude -p` call prevents individual agent runaway.
 
 ---
 
 ## 11. Cross-Platform Compatibility
 
-The script uses only POSIX-compatible constructs plus:
-- `jq` (required — we check and provide install instructions)
-- `claude` CLI (required)
-- `date -Iseconds` (GNU coreutils or macOS `gdate`)
+The script requires bash and the following external tools, all checked at startup with platform-specific install instructions:
 
-```bash
-# lib/config.sh
+| Tool | Purpose |
+|------|---------|
+| `claude` | All agent calls |
+| `jq` | JSON processing throughout |
+| `git` | Git forensics agent, history analysis |
+| `bc` | Budget arithmetic calculations |
+| `mktemp` | Safe temporary file/directory creation |
+| `sed` | Text processing in synthesis/validation |
+| `awk` | Text processing in config/validation |
+| `grep` | Pattern matching throughout |
 
-check_dependencies() {
-    if ! command -v claude &>/dev/null; then
-        echo "ERROR: claude CLI not found. Install: https://code.claude.com/docs/en/quickstart" >&2
-        exit 1
-    fi
+Additionally:
+- `claude auth status` is checked to verify authentication (no API cost)
+- On Windows, the script detects if running outside bash (CMD/PowerShell) and warns with instructions to use Git Bash
+- Unknown platforms trigger a warning with guidance
 
-    if ! command -v jq &>/dev/null; then
-        echo "ERROR: jq not found." >&2
-        echo "  macOS:   brew install jq" >&2
-        echo "  Linux:   sudo apt install jq" >&2
-        echo "  Windows: choco install jq (in Git Bash)" >&2
-        exit 1
-    fi
-
-    # Check claude auth
-    if ! claude -p "echo ok" --bare --allowedTools "" --max-budget-usd 0.01 &>/dev/null 2>&1; then
-        echo "ERROR: claude CLI not authenticated. Run: claude auth" >&2
-        exit 1
-    fi
-}
-```
-
-For Windows: the script runs in Git Bash or WSL. Both provide the standard Unix tools we need.
+For Windows: the script runs in Git Bash (included with Git for Windows) or WSL.
 
 ---
 
 ## 12. Testing & Quality Measurement
 
-### How We Test
+### Built-in Validation
 
-| What | How |
-|---|---|
-| Individual agents produce valid JSON | Run each agent on fixture repos, validate output against schema with `jq` |
-| Synthesis produces valid artifacts | Run full pipeline on fixtures, validate with `validate-skill.sh` and `validate-subagent.sh` |
-| CLAUDE.md quality | Automated checks: line count, instruction count, linter-rule duplication, stale paths, generic phrases |
-| Generated hooks work | Execute each hook with mock JSON stdin, check exit codes |
-| Cross-platform | Test on macOS (zsh), Linux (bash), Windows (Git Bash) |
-| Resume works | Kill script mid-run, rerun, verify it skips completed phases |
+Every run includes automated quality checks (Phase 5):
 
-### Fixture Codebases
+**CLAUDE.md:** minimum length (100+ lines), zero generic phrases ("best practice", "clean code", etc.), must contain code blocks or command tables, prohibitions must include alternatives.
 
-Four small but complete repos in `tests/fixtures/`:
-- `nextjs-app/` — Next.js + TypeScript + Prisma
-- `python-fastapi/` — FastAPI + SQLAlchemy + pytest
-- `monorepo-turbo/` — Turborepo with 3 packages
-- `rust-cli/` — Rust CLI with Cargo + GitHub Actions
+**Skills** (`scripts/validate-skill.sh`): frontmatter (kebab-case name, description with trigger phrases and negative scope, no angle brackets), body (minimum 3 codebase-specific file references, verification section), no generic programming phrases.
 
-Each has real git history (50+ commits) with realistic hotspot patterns.
+**Hooks:** shebang + `set -euo pipefail`, reads JSON from stdin, matching settings.json wiring.
 
-### Quality Criteria
+**Subagents** (`scripts/validate-subagent.sh`): frontmatter (name, description with trigger phrases), tool scoping matches purpose, minimum 3 codebase-specific references.
 
-Every generated CLAUDE.md is checked against:
-
-```bash
-# Automated quality gate
-check_claude_md_quality() {
-    local file="$1"
-    local errors=0
-
-    local lines=$(wc -l < "$file")
-    [[ $lines -gt 150 ]] && echo "FAIL: $lines lines (max 150)" && errors=$((errors+1))
-
-    local generic=$(grep -ciE '(best practice|clean code|solid principle|maintainable|readable)' "$file")
-    [[ $generic -gt 2 ]] && echo "FAIL: $generic generic phrases (max 2)" && errors=$((errors+1))
-
-    local has_commands=$(grep -c '```' "$file")
-    [[ $has_commands -lt 2 ]] && echo "FAIL: No command blocks found" && errors=$((errors+1))
-
-    local dont_without_instead=$(grep -c "Don't\|Do not\|Never" "$file")
-    local with_instead=$(grep -c "instead\|Use .* instead\|prefer" "$file")
-    # Rough check: more prohibitions than alternatives is a smell
-
-    return $errors
-}
-```
-
-Skills are validated with `scripts/validate-skill.sh`. Subagents with `scripts/validate-subagent.sh`.
-
-### Manual Eval Protocol
-
-For each fixture codebase:
-1. Run `ultrainit.sh` to generate config
-2. Start an interactive `claude` session in the fixture project
-3. Give Claude 5 standard tasks and score 0–5 on convention adherence
-4. Compare scores WITH vs WITHOUT ultrainit-generated config
+Failed artifacts are automatically revised and re-validated.
 
 ---
 
 ## 13. Distribution
 
-### Option A: curl-pipe-bash (recommended for quick use)
+### curl-pipe-bash (recommended)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/user/ultrainit/main/install.sh | bash
+curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/latest/download/ultrainit.sh | bash
 ```
 
-The installer clones the repo to `~/.ultrainit/` and adds `ultrainit` to PATH.
+GitHub Releases contain a bundled single-file `ultrainit.sh` that self-extracts all libs, schemas, prompts, and scripts to a temp directory.
 
-### Option B: Clone and run
+### Clone and run
 
 ```bash
-git clone https://github.com/user/ultrainit.git
-cd ultrainit
+git clone https://github.com/joelbarmettlerUZH/ultrainit.sh.git
+cd ultrainit.sh
 ./ultrainit.sh /path/to/your/project
 ```
-
-### Option C: Claude Code plugin
-
-Package as a Claude Code plugin so it appears as `/ultrainit` in interactive sessions:
-
-```
-.claude/plugins/ultrainit/
-├── plugin.json
-├── skills/
-│   └── ultrainit/SKILL.md
-└── commands/
-    └── ultrainit.md
-```
-
----
-
-## 14. Implementation Roadmap
-
-### Week 1: Foundation
-
-- [ ] `ultrainit.sh` — CLI skeleton with arg parsing, logging, progress
-- [ ] `lib/config.sh` — Dependency checks, defaults, platform detection
-- [ ] `lib/agent.sh` — `run_agent` and `run_agents_parallel` functions
-- [ ] `lib/utils.sh` — Logging, JSON helpers, phase tracking
-- [ ] `schemas/` — All JSON schemas for structured output
-- [ ] `prompts/` — All agent system prompts
-- [ ] Phase 1 (gather) with all 8 agents working end-to-end
-- [ ] Phase 2 (ask) interactive questions
-- [ ] Test on one fixture codebase
-
-**Exit criteria:** Running `ultrainit.sh` on a real project produces `.ultrainit/findings/` with valid JSON from each agent.
-
-### Week 2: Synthesis & Output
-
-- [ ] `prompts/synthesizer.md` — The synthesis mega-prompt
-- [ ] `schemas/synthesis-output.json` — Full output schema
-- [ ] Phase 4 (synthesize) working end-to-end
-- [ ] Phase 5 (validate & write) with quality checks
-- [ ] `lib/merge.sh` — Merge with existing `.claude/` config
-- [ ] `scripts/validate-skill.sh` + `validate-subagent.sh` integrated
-- [ ] Test on all 4 fixture codebases
-
-**Exit criteria:** Full pipeline produces valid CLAUDE.md + skills + hooks that pass quality checks.
-
-### Week 3: Research, MCP & Polish
-
-- [ ] Phase 3 (research) — Domain and framework research agents
-- [ ] `lib/mcp.sh` — MCP server discovery via Claude web search
-- [ ] Resume from crash (phase tracking)
-- [ ] `--dry-run` mode
-- [ ] Cross-platform testing (macOS, Linux, Git Bash)
-- [ ] `install.sh` — curl-pipe-bash installer
-- [ ] README with examples and screenshots
-- [ ] Manual eval on diverse real-world repos
-- [ ] Claude Code plugin packaging
-
-**Exit criteria:** Published to GitHub. `curl | bash` installation works. All fixture repos produce high-quality output.
