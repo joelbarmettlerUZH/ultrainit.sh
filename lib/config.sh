@@ -128,17 +128,85 @@ detect_platform() {
 check_dependencies() {
     local missing=0
 
+    # claude CLI: required for all agent calls
     if ! command -v claude &>/dev/null; then
         log_error "claude CLI not found. Install: https://docs.anthropic.com/en/docs/claude-code/overview"
         missing=1
     fi
 
+    # jq: required for all JSON processing
     if ! command -v jq &>/dev/null; then
         log_error "jq not found."
         case "$PLATFORM" in
             macos)   log_error "  Install: brew install jq" ;;
             linux)   log_error "  Install: sudo apt install jq  (or your package manager)" ;;
             windows) log_error "  Install: choco install jq  (in Git Bash)" ;;
+        esac
+        missing=1
+    fi
+
+    # git: required for git-forensics agent and history analysis
+    if ! command -v git &>/dev/null; then
+        log_error "git not found."
+        case "$PLATFORM" in
+            macos)   log_error "  Install: brew install git" ;;
+            linux)   log_error "  Install: sudo apt install git  (or your package manager)" ;;
+            windows) log_error "  Install: https://git-scm.com/download/win" ;;
+        esac
+        missing=1
+    fi
+
+    # bc: required for budget arithmetic calculations
+    if ! command -v bc &>/dev/null; then
+        log_error "bc not found."
+        case "$PLATFORM" in
+            macos)   log_error "  Install: brew install bc" ;;
+            linux)   log_error "  Install: sudo apt install bc  (or your package manager)" ;;
+            windows) log_error "  Install: choco install bc  (in Git Bash)" ;;
+        esac
+        missing=1
+    fi
+
+    # mktemp: required for safe temporary file/directory creation
+    if ! command -v mktemp &>/dev/null; then
+        log_error "mktemp not found."
+        case "$PLATFORM" in
+            macos)   log_error "  Install: brew install coreutils" ;;
+            linux)   log_error "  Install: sudo apt install coreutils  (or your package manager)" ;;
+            windows) log_error "  mktemp should be available in Git Bash; try reinstalling Git for Windows" ;;
+        esac
+        missing=1
+    fi
+
+    # sed: required for text processing in synthesis and validation
+    if ! command -v sed &>/dev/null; then
+        log_error "sed not found."
+        case "$PLATFORM" in
+            macos)   log_error "  Install: should be preinstalled; try: brew install gnu-sed" ;;
+            linux)   log_error "  Install: sudo apt install sed  (or your package manager)" ;;
+            windows) log_error "  sed should be available in Git Bash; try reinstalling Git for Windows" ;;
+        esac
+        missing=1
+    fi
+
+    # awk: required for text processing in config and validation
+    if ! command -v awk &>/dev/null; then
+        log_error "awk not found."
+        case "$PLATFORM" in
+            macos)   log_error "  Install: should be preinstalled; try: brew install gawk" ;;
+            linux)   log_error "  Install: sudo apt install gawk  (or your package manager)" ;;
+            windows) log_error "  awk should be available in Git Bash; try reinstalling Git for Windows" ;;
+        esac
+        missing=1
+    fi
+
+    # grep: required for pattern matching throughout the pipeline
+    if ! command -v grep &>/dev/null; then
+        log_error "grep not found."
+        case "$PLATFORM" in
+            macos)   log_error "  Install: should be preinstalled; try: brew install grep" ;;
+            linux)   log_error "  Install: sudo apt install grep  (or your package manager)" ;;
+            windows) log_error "  grep should be available in Git Bash; try reinstalling Git for Windows" ;;
         esac
         missing=1
     fi
