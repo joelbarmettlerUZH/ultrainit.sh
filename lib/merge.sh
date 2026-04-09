@@ -42,6 +42,12 @@ write_artifacts() {
         local name
         name=$(jq -r ".skills[$i].name" "$output")
 
+        # Skip null/empty names and names with path separators
+        if [[ -z "$name" || "$name" == "null" || "$name" == */* ]]; then
+            log_warn "Skipping skill with invalid name: '$name'"
+            continue
+        fi
+
         # Don't overwrite existing skills
         if [[ -f ".claude/skills/$name/SKILL.md" ]]; then
             log_info "Skipping existing skill: $name"
@@ -189,6 +195,12 @@ merge_settings() {
         local matcher
         matcher=$(jq -r ".settings_hooks[$i].matcher // empty" "$output")
 
+        # Skip entries with null/empty event or command
+        if [[ -z "$event" || "$event" == "null" || -z "$command" || "$command" == "null" ]]; then
+            log_warn "Skipping settings hook with invalid event ('$event') or command ('$command')"
+            continue
+        fi
+
         local hook_entry
         if [[ -n "$matcher" ]]; then
             hook_entry=$(jq -n --arg cmd "$command" --arg m "$matcher" \
@@ -201,6 +213,13 @@ merge_settings() {
         hooks_json=$(echo "$hooks_json" | jq --arg event "$event" --argjson entry "$hook_entry" \
             '.hooks[$event] = (.hooks[$event] // []) + [$entry]')
     done
+
+    # If all entries were skipped (e.g., all had null events), don't write empty hooks
+    local valid_hook_count
+    valid_hook_count=$(echo "$hooks_json" | jq '.hooks | to_entries | length')
+    if [[ "$valid_hook_count" -eq 0 ]]; then
+        return 0
+    fi
 
     mkdir -p .claude
     if [[ -f .claude/settings.json ]]; then

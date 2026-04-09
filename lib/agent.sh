@@ -19,17 +19,19 @@ record_cost() {
 
 # Run a single claude -p agent with structured JSON output.
 #
-# Usage: run_agent <name> <prompt> <schema_file> <allowed_tools> [model]
+# Usage: run_agent <name> <prompt> <schema_file> <allowed_tools> [model] [phase]
 #
 # - Writes JSON output to $WORK_DIR/findings/<name>.json
 # - Skips if findings already exist (unless FORCE=true)
 # - Logs stderr to $WORK_DIR/logs/<name>.stderr
+# - phase defaults to AGENT_PHASE (if set) or "gather"
 run_agent() {
     local name="$1"
     local prompt="$2"
     local schema_file="$3"
     local allowed_tools="$4"
     local model="${5:-$AGENT_MODEL}"
+    local phase="${6:-${AGENT_PHASE:-gather}}"
     local output_file="$WORK_DIR/findings/${name}.json"
 
     # Resumability: skip if findings exist
@@ -113,7 +115,7 @@ run_agent() {
     # Track cost
     local cost
     cost=$(echo "$raw_output" | jq -r '.total_cost_usd // 0' 2>/dev/null)
-    record_cost "gather" "$name" "$cost"
+    record_cost "$phase" "$name" "$cost"
 
     # Extract structured output from claude response
     # With --json-schema, output is in .structured_output; without, in .result
@@ -170,6 +172,7 @@ export FORCE="$FORCE"
 export VERBOSE="$VERBOSE"
 export AGENT_MODEL="$AGENT_MODEL"
 export AGENT_BUDGET="$AGENT_BUDGET"
+export AGENT_PHASE="${AGENT_PHASE:-gather}"
 export TOTAL_BUDGET="$TOTAL_BUDGET"
 
 source "$SCRIPT_DIR/lib/utils.sh"

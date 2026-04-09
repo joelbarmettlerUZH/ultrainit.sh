@@ -1,0 +1,9 @@
+{
+  "directories": [
+    {"path": "src", "role": "source code", "description": "Main application source", "priority": "high"},
+    {"path": "src/components", "role": "UI components", "description": "React components", "priority": "medium"},
+    {"path": "tests", "role": "test suite", "description": "Test files", "priority": "low"}
+  ],
+  "total_files": 150,
+  "total_directories": 20
+}

@@ -1,0 +1,27 @@
+name: Build Test Image
+
+on:
+  push:
+    paths: [Dockerfile.test]
+    branches: [main]
+
+permissions:
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          file: Dockerfile.test
+          push: true
+          tags: ghcr.io/joelbarmettleruzh/ultrainit-test:latest

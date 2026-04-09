@@ -310,7 +310,7 @@ PROMPT_FOOTER
     fi
 
     # Run with up to 3 retries (transient API errors on large-context calls)
-    local max_retries=3
+    local max_retries="${ULTRAINIT_MAX_RETRIES:-3}"
     local attempt=0
     local raw_output=""
 
@@ -396,11 +396,11 @@ postprocess_descriptions() {
         local content
         content=$(jq -r ".skills[$i].content" "$output_file")
 
-        if echo "$content" | awk '/^description:/,/^[a-z]/' | grep -q '[<>]'; then
+        if echo "$content" | awk '/^description:/,/^([a-z]|---)/' | grep -q '[<>]'; then
             local new_content
             new_content=$(echo "$content" | awk '
                 /^description:/ { in_desc=1 }
-                in_desc && /^[a-z]/ && !/^description:/ { in_desc=0 }
+                in_desc && (/^[a-z]/ || /^---/) && !/^description:/ { in_desc=0 }
                 in_desc { gsub(/</, "\""); gsub(/>/, "\"") }
                 { print }
             ')
@@ -418,11 +418,11 @@ postprocess_descriptions() {
         local content
         content=$(jq -r ".subagents[$i].content" "$output_file")
 
-        if echo "$content" | awk '/^description:/,/^[a-z]/' | grep -q '[<>]'; then
+        if echo "$content" | awk '/^description:/,/^([a-z]|---)/' | grep -q '[<>]'; then
             local new_content
             new_content=$(echo "$content" | awk '
                 /^description:/ { in_desc=1 }
-                in_desc && /^[a-z]/ && !/^description:/ { in_desc=0 }
+                in_desc && (/^[a-z]/ || /^---/) && !/^description:/ { in_desc=0 }
                 in_desc { gsub(/</, "\""); gsub(/>/, "\"") }
                 { print }
             ')

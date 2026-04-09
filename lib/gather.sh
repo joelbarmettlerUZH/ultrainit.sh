@@ -13,6 +13,7 @@ gather_evidence() {
 
     # Set per-agent budget: gather phase gets 50% of total, split across agents
     # Stage 1 has 8 agents, stage 2 has N agents — estimate ~50 total
+    export AGENT_PHASE="gather"
     set_agent_budget "$GATHER_BUDGET" 50
 
     # ── Stage 1: Core agents + structure scout in parallel ──────
@@ -146,7 +147,12 @@ run_deep_dive_agents() {
 
         # Create a safe agent name from the path
         local safe_name
-        safe_name=$(echo "$dir_path" | sed 's|/|-|g; s|\.|-|g; s|[()]||g; s|^-||; s|-$||')
+        safe_name=$(echo "$dir_path" | sed 's|/|-|g; s|\.|-|g; s|[()]||g; s| ||g; s|^-||; s|-$||')
+
+        # Skip empty names (e.g., from "." directory)
+        if [[ -z "$safe_name" ]]; then
+            safe_name="root"
+        fi
 
         # Skip if already analyzed
         if [[ -f "$WORK_DIR/findings/module-${safe_name}.json" ]] && [[ "$FORCE" != "true" ]]; then
@@ -234,7 +240,8 @@ run_fallback_module_analyzers() {
         local rel_name
         rel_name=$(basename "$mod")
         local safe_name
-        safe_name=$(echo "$rel_name" | sed 's|/|-|g; s|\.|-|g')
+        safe_name=$(echo "$rel_name" | sed 's|/|-|g; s|\.|-|g; s| ||g; s|^-||; s|-$||')
+        [[ -z "$safe_name" ]] && safe_name="root"
 
         module_calls+=("run_agent module-${safe_name} \
             'Deeply analyze the directory at ${rel_name}/ in this project. Produce an exhaustive analysis covering: architecture, key files, patterns, conventions, dependencies, gotchas, and skill opportunities.' \

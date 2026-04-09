@@ -27,14 +27,18 @@ mark_phase_complete() {
     local phase="$1"
     local state_file="$WORK_DIR/state.json"
 
-    if [[ ! -f "$state_file" ]]; then
+    if [[ ! -f "$state_file" ]] || ! jq empty "$state_file" 2>/dev/null; then
         echo '{}' > "$state_file"
     fi
 
     local tmp
     tmp=$(jq --arg p "$phase" --arg t "$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)" \
         '.[$p] = $t' "$state_file")
-    echo "$tmp" > "$state_file"
+
+    # Only write if jq produced valid output (prevents destroying state on failure)
+    if [[ -n "$tmp" ]] && echo "$tmp" | jq empty 2>/dev/null; then
+        echo "$tmp" > "$state_file"
+    fi
 }
 
 is_phase_complete() {

@@ -1,0 +1,47 @@
+{
+  "claude_md": "# Test Project\n\n## Overview\nA full-stack web application for managing tasks.\n\n## Commands\n\n| Command | Purpose |\n|---------|----------|\n| `npm run build` | Build the project |\n| `npm test` | Run tests |\n| `npm run lint` | Run linter |\n\n## Architecture\n\nThe project follows a repository pattern for data access.\nBarrel exports are used via `index.ts` files.\n\n## Conventions\n\n- Use TypeScript strict mode\n- Follow conventional commits (e.g. `feat:`, `fix:`)\n- Reference tickets as PROJ-123\n\n## Don'ts\n\n- Never edit migration files directly. Instead, create a new migration.\n- Don't modify `.env` files. Instead, update `.env.example` and copy.\n\n## Testing\n\nRun `npm test` for the full suite.\nUse `npm test -- --watch` for development.\n\n## Deployment\n\nDeployed via Docker + AWS ECS.\nCI/CD pipeline runs on push to main.\n\n## Additional lines to meet length requirements\n\nLine 1 of padding\nLine 2 of padding\nLine 3 of padding\nLine 4 of padding\nLine 5 of padding\nLine 6 of padding\nLine 7 of padding\nLine 8 of padding\nLine 9 of padding\nLine 10 of padding\nLine 11 of padding\nLine 12 of padding\nLine 13 of padding\nLine 14 of padding\nLine 15 of padding\nLine 16 of padding\nLine 17 of padding\nLine 18 of padding\nLine 19 of padding\nLine 20 of padding",
+  "subdirectory_claude_mds": [
+    {
+      "path": "src",
+      "content": "# src/\n\nMain application source code.\n\n## Patterns\n- Repository pattern for data access\n- Barrel exports via index.ts"
+    }
+  ],
+  "skills": [
+    {
+      "name": "api-development",
+      "description": "Use when building or modifying API endpoints in src/api/. Do NOT use for frontend components.",
+      "content": "---\nname: api-development\ndescription: Use when building or modifying API endpoints in src/api/. Covers route creation, middleware wiring, and request validation. Do NOT use for frontend components.\n---\n\n# API Development\n\nThis skill covers creating and modifying API endpoints.\n\n## Key Files\n\n- `src/api/routes.ts` — Route definitions\n- `src/api/middleware.ts` — Auth and validation middleware\n- `src/api/controllers/` — Request handlers\n- `src/repos/` — Data access layer\n- `tests/api/` — API test files\n\n## Workflow\n\n1. Define route in `src/api/routes.ts`\n2. Create controller in `src/api/controllers/`\n3. Add middleware as needed\n4. Write tests in `tests/api/`\n\n## Verification\n\nRun `npm test -- --grep api` to verify API changes."
+    },
+    {
+      "name": "database-migrations",
+      "description": "Use when creating or reviewing database schema changes. Do NOT use for direct schema edits.",
+      "content": "---\nname: database-migrations\ndescription: Use when creating or reviewing database schema changes. Covers migration creation and execution. Do NOT use for direct schema edits.\n---\n\n# Database Migrations\n\n## Key Files\n\n- `src/db/migrations/` — Migration files\n- `src/db/schema.ts` — Current schema\n- `src/repos/` — Repository layer\n- `scripts/migrate.sh` — Migration runner\n\n## Workflow\n\n1. Create migration file with timestamp prefix\n2. Define up/down functions\n3. Run `scripts/migrate.sh` to apply\n\n## Verification\n\nRun `npm run db:status` to check migration state."
+    }
+  ],
+  "hooks": [
+    {
+      "filename": "format-on-save.sh",
+      "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "description": "Auto-format files after edits",
+      "content": "#!/usr/bin/env bash\nset -euo pipefail\n\nINPUT=$(cat)\nFILE=$(echo \"$INPUT\" | jq -r '.tool_input.file_path // empty')\n\nif [[ -n \"$FILE\" && \"$FILE\" == *.ts ]]; then\n    npx prettier --write \"$FILE\" 2>/dev/null || true\nfi\nexit 0"
+    }
+  ],
+  "subagents": [],
+  "mcp_servers": [
+    {
+      "name": "context7",
+      "command": "npx",
+      "args": ["-y", "@context7/mcp"],
+      "env": {},
+      "reason": "Up-to-date library documentation"
+    }
+  ],
+  "settings_hooks": [
+    {
+      "event": "PostToolUse",
+      "command": ".claude/hooks/format-on-save.sh",
+      "matcher": "Write|Edit"
+    }
+  ]
+}

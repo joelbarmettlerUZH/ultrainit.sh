@@ -126,6 +126,15 @@ ultrainit/
 ├── scripts/
 │   ├── validate-skill.sh           # Skill quality validator
 │   └── validate-subagent.sh        # Subagent quality validator
+├── tests/                          # bats-core test suite (see section 12)
+│   ├── helpers/                    # test_helper.bash, mock_claude.bash
+│   ├── fixtures/                   # Realistic JSON fixtures for all agents
+│   ├── unit/                       # Unit tests for pure functions
+│   ├── scripts/                    # Tests for validate-skill.sh, validate-subagent.sh
+│   ├── integration/                # Phase-level and full-pipeline tests
+│   └── edge/                       # Budget exhaustion, CLI args
+├── Dockerfile.test                 # Test runner image (bash + bats-core + deps)
+├── Makefile                        # Build and test targets
 ├── docs/
 │   ├── logo.png
 │   └── diagram.png
@@ -803,9 +812,78 @@ For Windows: the script runs in Git Bash (included with Git for Windows) or WSL.
 
 ## 12. Testing & Quality Measurement
 
-### Built-in Validation
+### Automated Test Suite
 
-Every run includes automated quality checks (Phase 5):
+The project uses **bats-core** (Bash Automated Testing System) running inside Docker for fully isolated, reproducible tests. No real Claude calls are made — all `claude` invocations are intercepted by a PATH-based mock binary.
+
+#### Running Tests
+
+```bash
+make test-image          # Build the Docker test image locally (one-time)
+make test-unit           # Run unit tests (~15s)
+make test-scripts        # Run standalone validator script tests
+make test-edge           # Run edge case tests
+make test-all            # Run everything
+```
+
+The test image is published to `ghcr.io/joelbarmettleruzh/ultrainit-test:latest` and rebuilt automatically when `Dockerfile.test` changes on main.
+
+#### Test Structure
+
+```
+tests/
+├── helpers/
+│   ├── test_helper.bash       # Shared setup: tmpdir, env defaults, make_claude_envelope()
+│   └── mock_claude.bash       # PATH-based mock claude binary with single/dispatch modes
+├── fixtures/                  # Realistic JSON fixtures for all agent types
+│   ├── findings/              # identity.json, commands.json, patterns.json, etc.
+│   └── synthesis/             # output-docs.json, output-tooling.json, output.json
+├── unit/                      # Tests for individual functions
+│   ├── config_budget.bats     # compute_budgets, set_agent_budget, check_budget, get_remaining_budget
+│   ├── utils.bats             # json_get, json_merge, mark_phase_complete, is_phase_complete
+│   ├── agent_helpers.bats     # record_cost, get_failed_agents
+│   ├── agent_run.bats         # run_agent with mock claude (success, skip, force, failures, budget, stdin)
+│   ├── config_workdir.bats    # setup_work_dir (dirs, state.json, .gitignore)
+│   ├── validate_claude_md.bats# CLAUDE.md validation (length, generics, code blocks, prohibitions)
+│   ├── validate_hook.bats     # Hook validation (shebang, pipefail, stdin, blocking) + wiring
+│   ├── merge.bats             # merge_settings, write_mcp_config, backup_existing, write_artifacts
+│   └── synthesize_helpers.bats# estimate_tokens, build_*_context, merge_synthesis_passes, postprocess
+├── scripts/                   # Tests for standalone validator scripts
+│   ├── validate_skill.bats    # Frontmatter, description, path refs, generics, verification
+│   └── validate_subagent.bats # Frontmatter, name, filename casing
+├── integration/               # Phase-level and full-pipeline tests with mock dispatch
+└── edge/                      # Budget exhaustion mid-run, CLI argument parsing
+```
+
+#### Mocking Strategy
+
+All Claude calls funnel through either `run_agent()` or direct `claude -p` invocations. Since `run_agents_parallel()` spawns child bash processes, function-level mocking doesn't work. Instead, a **mock `claude` binary** is placed on `$PATH` via `tests/helpers/mock_claude.bash`:
+
+- **Single mode:** `MOCK_CLAUDE_RESPONSE` points to a JSON file returned for all calls
+- **Dispatch mode:** `MOCK_CLAUDE_DISPATCH_DIR` contains per-agent response files (e.g., `identity.json`, `commands.json`)
+- **Error simulation:** `MOCK_CLAUDE_EXIT_CODE` controls exit code
+- **Call logging:** All invocations are logged to `MOCK_CLAUDE_LOG` for assertion
+- Handles `claude auth status` specially (returns `{"loggedIn": true}`)
+
+The mock returns realistic response envelopes matching the real `claude -p --output-format json` format:
+```json
+{"is_error": false, "total_cost_usd": 0.15, "structured_output": { ... }}
+```
+
+#### CI/CD
+
+Two GitHub Actions workflows:
+
+- **`.github/workflows/test.yml`** — Runs on push/PR. Syntax-checks all `.sh` files, then runs the full bats suite inside the pre-built Docker container.
+- **`.github/workflows/docker-test-image.yml`** — Rebuilds and pushes the test image to GHCR when `Dockerfile.test` changes on main.
+
+#### Test-Friendly Source Configuration
+
+- `lib/synthesize.sh`: `max_retries` is configurable via `ULTRAINIT_MAX_RETRIES` env var (defaults to 3). Set to 1 in tests to avoid retry delays.
+
+### Built-in Validation (Phase 5)
+
+Every production run also includes automated quality checks:
 
 **CLAUDE.md:** minimum length (100+ lines), zero generic phrases ("best practice", "clean code", etc.), must contain code blocks or command tables, prohibitions must include alternatives.
 
