@@ -160,6 +160,134 @@ EOF
     assert_output --partial "No verification section"
 }
 
+# ── Tests for patterns the synthesis agent actually generates ──
+
+@test "skill with YAML folded scalar description passes" {
+    local skill_dir="$TEST_TMPDIR/yaml-folded"
+    mkdir -p "$skill_dir"
+    cat > "$skill_dir/SKILL.md" <<'EOF'
+---
+name: yaml-folded
+description: >
+  Add a new Flask route handler to app.py following the existing CRUD pattern.
+  Use when the user says "add an endpoint", "add a route", "create a new API method".
+  Do NOT use for creating entirely new Flask application files.
+---
+
+## Before You Start
+
+- `app.py` — existing route handlers
+- `tests/test_app.py` — test patterns
+- `requirements.txt` — pinned dependencies
+
+## Verify
+
+Run `python -m pytest tests/`
+EOF
+    run bash "$PROJECT_ROOT/scripts/validate-skill.sh" "$skill_dir/SKILL.md"
+    assert_success
+    assert_output --partial "VERDICT: PASS"
+}
+
+@test "skill with YAML literal scalar description passes" {
+    local skill_dir="$TEST_TMPDIR/yaml-literal"
+    mkdir -p "$skill_dir"
+    cat > "$skill_dir/SKILL.md" <<'EOF'
+---
+name: yaml-literal
+description: |
+  Debug Flask endpoint issues in this project.
+  Use when an API route returns unexpected status codes or data.
+  Do NOT use for frontend or database migration issues.
+---
+
+## Key Files
+
+- `app.py` — route handlers to inspect
+- `tests/test_app.py` — reproduce issues with tests
+- `requirements.txt` — check Flask version
+
+## Verify
+
+Run `python -m pytest tests/ -v`
+EOF
+    run bash "$PROJECT_ROOT/scripts/validate-skill.sh" "$skill_dir/SKILL.md"
+    assert_success
+    assert_output --partial "VERDICT: PASS"
+}
+
+@test "skill referencing only root-level files passes path check" {
+    local skill_dir="$TEST_TMPDIR/root-files"
+    mkdir -p "$skill_dir"
+    cat > "$skill_dir/SKILL.md" <<'EOF'
+---
+name: root-files
+description: Update project configuration files. Use when changing dependencies or settings. Do NOT use for code changes.
+---
+
+## Key Files
+
+- `app.py` — main application entry point
+- `requirements.txt` — Python dependencies
+- `README.md` — project documentation
+
+## Verify
+
+Run `pip install -r requirements.txt`
+EOF
+    run bash "$PROJECT_ROOT/scripts/validate-skill.sh" "$skill_dir/SKILL.md"
+    assert_success
+    # Should detect 3 backtick-wrapped file references
+    assert_output --partial "Codebase-specific path references: 3"
+}
+
+@test "skill with tests/ directory references passes" {
+    local skill_dir="$TEST_TMPDIR/test-refs"
+    mkdir -p "$skill_dir"
+    cat > "$skill_dir/SKILL.md" <<'EOF'
+---
+name: test-refs
+description: Add new test cases for API endpoints. Use when adding tests. Do NOT use for non-test code.
+---
+
+## Key Files
+
+- `tests/test_app.py` — existing test patterns
+- `tests/` directory for all test files
+- `app.py` — the code under test
+
+## Verify
+
+Run `python -m pytest tests/ -v`
+EOF
+    run bash "$PROJECT_ROOT/scripts/validate-skill.sh" "$skill_dir/SKILL.md"
+    assert_success
+}
+
+@test "skill with real angle brackets in description still fails" {
+    local skill_dir="$TEST_TMPDIR/real-angles"
+    mkdir -p "$skill_dir"
+    cat > "$skill_dir/SKILL.md" <<'EOF'
+---
+name: real-angles
+description: Use for <component> creation. Do NOT use for <other> things.
+---
+
+## Files
+
+- `app.py`
+- `tests/test_app.py`
+- `requirements.txt`
+
+## Verify
+
+Check it.
+EOF
+    run bash "$PROJECT_ROOT/scripts/validate-skill.sh" "$skill_dir/SKILL.md"
+    assert_failure
+    assert_output --partial "angle brackets"
+}
+
 @test "nonexistent file fails" {
     run bash "$PROJECT_ROOT/scripts/validate-skill.sh" "$TEST_TMPDIR/nonexistent.md"
     assert_failure
