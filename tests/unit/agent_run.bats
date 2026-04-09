@@ -105,10 +105,38 @@ teardown() {
     assert_file_not_exists "$WORK_DIR/findings/test-agent.json"
 }
 
-@test "run_agent fails on is_error=true" {
+@test "run_agent fails on is_error=true and logs error to stderr file" {
     make_claude_envelope '{}' "0" "true" > "$MOCK_CLAUDE_RESPONSE"
     run run_agent "test-agent" "Analyze this" "$TEST_TMPDIR/schema.json" "Read"
     assert_failure
+    # Error should be written to the stderr log file
+    [[ -s "$WORK_DIR/logs/test-agent.stderr" ]]
+}
+
+@test "run_agent surfaces error message from errors array" {
+    # Simulate Claude's real budget-exceeded response format
+    jq -n '{
+        is_error: true,
+        total_cost_usd: 0.05,
+        errors: ["Reached maximum budget ($0.05)"],
+        subtype: "error_max_budget_usd"
+    }' > "$MOCK_CLAUDE_RESPONSE"
+    run run_agent "budget-fail" "Analyze" "$TEST_TMPDIR/schema.json" "Read"
+    assert_failure
+    # The error message should include the actual reason, not "unknown"
+    assert_output --partial "Reached maximum budget"
+    refute_output --partial "unknown"
+}
+
+@test "run_agent surfaces error from .result when no errors array" {
+    jq -n '{
+        is_error: true,
+        total_cost_usd: 0,
+        result: "Rate limit exceeded"
+    }' > "$MOCK_CLAUDE_RESPONSE"
+    run run_agent "rate-limit" "Analyze" "$TEST_TMPDIR/schema.json" "Read"
+    assert_failure
+    assert_output --partial "Rate limit exceeded"
 }
 
 @test "run_agent fails on non-object output" {

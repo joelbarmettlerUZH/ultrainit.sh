@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-.PHONY: bundle clean check test test-unit test-scripts test-integration test-edge test-image
+.PHONY: bundle clean check test test-unit test-scripts test-integration test-edge test-image smoke smoke-source
 
 DIST_DIR := dist
 BUNDLE := $(DIST_DIR)/ultrainit.sh
@@ -57,6 +57,14 @@ test-all: ## Run all bats tests in Docker
 
 test-image: ## Build the test Docker image locally
 	docker build -f Dockerfile.test -t $(TEST_IMAGE) .
+
+# ── Smoke tests (real Claude, real codebase) ───────────────
+
+smoke: $(BUNDLE) ## Smoke test: run bundled ultrainit on mini-project (~$1-3)
+	bash tests/smoke/run-smoke.sh
+
+smoke-source: ## Smoke test: run from source on mini-project (~$1-3)
+	bash tests/smoke/run-smoke.sh --source
 
 clean:
 	rm -rf $(DIST_DIR)

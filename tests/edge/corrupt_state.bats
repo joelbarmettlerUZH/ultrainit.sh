@@ -68,6 +68,45 @@ teardown() {
     assert_success
 }
 
+@test "check_budget does not hang on empty cost dir with nullglob" {
+    # Regression: synthesize.sh sets shopt -s nullglob globally.
+    # With nullglob, *.cost expands to nothing → cat gets no args → blocks on stdin.
+    # This test verifies check_budget returns quickly with no cost files.
+    TOTAL_BUDGET="100.00"
+    # costs dir exists (created by _common_setup) but has no .cost files
+    rm -f "$WORK_DIR/costs/"*.cost 2>/dev/null || true
+
+    # Verify nullglob IS set (matching real runtime)
+    shopt -q nullglob
+
+    # This must return within 1 second, not hang
+    run timeout 2 bash -c "
+        source '$PROJECT_ROOT/lib/utils.sh'
+        source '$PROJECT_ROOT/lib/config.sh'
+        source '$PROJECT_ROOT/lib/synthesize.sh'
+        export WORK_DIR='$WORK_DIR'
+        export TOTAL_BUDGET='100.00'
+        check_budget
+    "
+    assert_success
+}
+
+@test "get_remaining_budget does not hang on empty cost dir with nullglob" {
+    TOTAL_BUDGET="100.00"
+    rm -f "$WORK_DIR/costs/"*.cost 2>/dev/null || true
+
+    run timeout 2 bash -c "
+        source '$PROJECT_ROOT/lib/utils.sh'
+        source '$PROJECT_ROOT/lib/config.sh'
+        source '$PROJECT_ROOT/lib/synthesize.sh'
+        export WORK_DIR='$WORK_DIR'
+        export TOTAL_BUDGET='100.00'
+        get_remaining_budget
+    "
+    assert_success
+    assert_output --partial "100.00"
+}
+
 @test "print_cost_summary treats cost '0.0' same as '0'" {
     # The code checks: [[ "$cost" == "0" ]] to skip zeros.
     # "0.0" doesn't match "0", so it gets included in the sum.
