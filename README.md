@@ -10,7 +10,7 @@ ${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{
 curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/latest/download/ultrainit.sh | bash
 ```
 
-No Python. No npm. No dependencies beyond `claude` and `jq`. Runs 15-30 minutes depending on codebase size. Resumable if interrupted.
+No Python. No npm. No dependencies beyond `claude`, `jq`, and standard Unix tools. Runs 15-30 minutes depending on codebase size. Resumable if interrupted.
 
 ---
 
@@ -48,8 +48,9 @@ A typical run on a full-stack web application:
 
 ### Prerequisites
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated (`claude auth login`)
 - `jq` (`brew install jq` / `apt install jq` / `choco install jq`)
+- `git`, `bc`, `mktemp`, `sed`, `awk`, `grep` (pre-installed on most systems; the script checks at startup and tells you what's missing)
 - [Extra usage](https://claude.ai/settings/usage) enabled (required for 1M context synthesis)
 - **Recommended:** [Claude Max subscription](https://claude.ai/settings/billing). All usage is included, making ultrainit free. Without it, expect $30-60 in API credits per run.
 
@@ -90,7 +91,7 @@ bash <(curl -sL https://github.com/joelbarmettlerUZH/ultrainit.sh/releases/lates
 | Environment Variable | Description |
 |---------------------|-------------|
 | `ULTRAINIT_MODEL` | Default model for gather/research agents (default: `sonnet`) |
-| `ULTRAINIT_BUDGET` | Total run budget in USD (default: `30.00`) |
+| `ULTRAINIT_BUDGET` | Total run budget in USD (default: `100.00`) |
 
 ### What Gets Generated
 
@@ -156,14 +157,13 @@ This phase produces 500KB-1MB of structured findings.
 
 ### Phase 2: Ask the Developer
 
-Six interactive questions capture knowledge that code analysis can't provide:
+Five interactive questions capture knowledge that code analysis can't provide:
 
 1. What is the primary purpose of this project?
-2. Where is it deployed?
-3. What external services does it integrate with?
-4. What should Claude NEVER do in this codebase?
-5. What common mistakes do new developers make?
-6. Anything else Claude should know?
+2. How is it deployed?
+3. What should Claude NEVER do in this codebase?
+4. What trips up new developers on this project?
+5. Anything else important?
 
 Skipped with `--non-interactive`.
 
@@ -251,9 +251,11 @@ If the budget seems too low for the selected model, a warning is shown at startu
 
 ## Resumability
 
-${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ saves all intermediate results to `.ultrainit/` in your project directory. If the script crashes or is interrupted:
+${\color{red}\texttt{u}}{\color{orange}\texttt{l}}{\color{Goldenrod}\texttt{t}}{\color{green}\texttt{r}}{\color{violet}\texttt{a}}{\color{blue}\texttt{i}}{\color{pink}\texttt{n}}{\color{red}\texttt{i}}{\color{orange}\texttt{t}}$ saves all intermediate results to `.ultrainit/` in your project directory. If the script crashes, is interrupted, or a phase fails:
 
-- Rerun the same command; completed agents are skipped automatically
+- Rerun the same command; completed agents and phases are skipped automatically
+- Failed agents are retried on the next run; successful ones are not re-run
+- If critical agents fail (identity, structure-scout) or too many agents fail (3+), the script stops with a Claude-powered diagnosis explaining what went wrong and how to fix it
 - Use `--force` to rerun everything from scratch
 - The `.ultrainit/` directory is automatically added to `.gitignore`
 
@@ -341,7 +343,7 @@ Large monorepos with 50+ directories can take up to 30 minutes. The run is fully
 
 ### What about rate limits?
 
-Deep-dive agents run in batches of 8 to avoid API rate limits. If individual agents fail (e.g., due to rate limiting), the pipeline continues. Failed agents are logged but don't abort the run.
+Deep-dive agents run in batches of 8 to avoid API rate limits. Individual agent failures are tolerated: if 1-2 non-critical agents fail, the pipeline continues with partial results. However, if critical agents fail (identity, structure-scout) or 3+ agents fail in the same phase, the script stops with a diagnosis explaining the root cause and how to fix it. On re-run, only the failed agents are retried.
 
 ---
 
@@ -349,19 +351,22 @@ Deep-dive agents run in batches of 8 to avoid API rate limits. If individual age
 
 ### Required
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- `jq`. Install via `brew install jq` (macOS), `apt install jq` (Linux), or `choco install jq` (Windows)
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated (`claude auth login`)
+- `jq`. Install via `brew install jq` (macOS), `apt install jq` (Linux), or `choco install jq` (Windows/Git Bash)
+- `git`, `bc`, `mktemp`, `sed`, `awk`, `grep` (pre-installed on most systems)
 - **Extra usage enabled.** The synthesis phase uses models with 1M token context. Enable extra usage at [claude.ai/settings/usage](https://claude.ai/settings/usage), otherwise synthesis will fail with "Extra usage is required for 1M context".
+
+The script checks all dependencies at startup and tells you exactly what's missing and how to install it.
 
 ### Platform Support
 
 | Platform | How to Run |
 |----------|-----------|
-| **Linux** | Works directly. `bash` and `jq` are usually pre-installed. |
-| **macOS** | Works directly. Install `jq` via `brew install jq`. |
-| **Windows** | Use **WSL** (recommended) or **Git Bash**. Native `cmd.exe` / PowerShell are not supported. In WSL, install `jq` with `sudo apt install jq`. |
+| **Linux** | Works directly. All dependencies are usually pre-installed except `jq`. |
+| **macOS** | Works directly. Install `jq` via `brew install jq`. May need `bc` via `brew install bc`. |
+| **Windows** | Use **Git Bash** (included with [Git for Windows](https://git-scm.com/download/win)) or **WSL**. Native `cmd.exe` / PowerShell are **not supported**. Install `jq` and `bc` with `choco install jq bc`. |
 
-**Windows users:** If you see errors about missing commands or encoding issues, make sure you're running inside WSL or Git Bash, not PowerShell. The `curl | bash` command requires a Unix-like shell.
+**Windows users:** The script detects if you're running outside of a bash shell and will warn you with instructions to use Git Bash. If you see errors about missing commands, make sure you're running inside Git Bash or WSL, not PowerShell or CMD.
 
 ---
 
