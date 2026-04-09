@@ -314,24 +314,37 @@ PROMPT_FOOTER
     local attempt=0
     local raw_output=""
 
+    local output_tmpfile="$WORK_DIR/logs/synthesis-${pass_name}.stdout"
+
     while [[ $attempt -lt $max_retries ]]; do
         attempt=$((attempt + 1))
         : > "$stderr_file"
+        : > "$output_tmpfile"
 
-        raw_output=$(cat "$prompt_file" | claude -p - \
-            --model "$SYNTH_MODEL" \
-            --output-format json \
-            --json-schema "$schema" \
-            --allowedTools "Read" \
-            --append-system-prompt-file "$prompt_file_path" \
-            --max-budget-usd "$pass_budget" \
-            2>>"$stderr_file") || true
+        run_with_spinner \
+            "Synthesis pass '$pass_name' running (attempt $attempt)..." \
+            "$output_tmpfile" \
+            "$stderr_file" \
+            bash -c "cat '$prompt_file' | claude -p - \
+                --model '$SYNTH_MODEL' \
+                --output-format json \
+                --json-schema '$schema' \
+                --allowedTools 'Read' \
+                --append-system-prompt-file '$prompt_file_path' \
+                --max-budget-usd '$pass_budget'" \
+            || true
+
+        raw_output=$(cat "$output_tmpfile")
 
         # Check for API-level errors
         local is_error
         is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
         local error_msg
-        error_msg=$(echo "$raw_output" | jq -r '.result // ""' 2>/dev/null)
+        error_msg=$(echo "$raw_output" | jq -r '
+            (if (.errors // [] | length) > 0 then (.errors | join("; "))
+             elif .result then .result
+             else "" end)
+        ' 2>/dev/null)
 
         if [[ "$is_error" != "true" ]] && [[ -n "$raw_output" ]]; then
             break  # success

@@ -89,6 +89,23 @@ spin() {
     return $?
 }
 
+# Run a command in the background with a spinner, capturing stdout to a file.
+# Usage: run_with_spinner <label> <output_file> <stderr_file> <command> [args...]
+# Returns the command's exit code. stdout is written to output_file.
+run_with_spinner() {
+    local label="$1"
+    local output_file="$2"
+    local stderr_file="$3"
+    shift 3
+
+    "$@" > "$output_file" 2>>"$stderr_file" &
+    local pid=$!
+
+    spin "$pid" "$label"
+    local exit_code=$?
+    return $exit_code
+}
+
 # ── Misc ────────────────────────────────────────────────────────
 
 # Portable date -Iseconds (works on macOS with coreutils or fallback)
