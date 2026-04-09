@@ -136,7 +136,13 @@ if [[ "$OVERWRITE" == "true" ]]; then
 fi
 
 # ── Phase 1: GATHER ────────────────────────────────────────────
-gather_evidence
+if ! gather_evidence; then
+    echo ""
+    print_cost_summary
+    log_error "Phase 1 (gather) failed. Exiting."
+    log_info "Re-run ultrainit after fixing the issue. Successful agents will be skipped."
+    exit 1
+fi
 
 # ── Phase 2: ASK ───────────────────────────────────────────────
 ask_developer
@@ -144,10 +150,20 @@ ask_developer
 # ── Phase 3: RESEARCH ──────────────────────────────────────────
 if [[ "$SKIP_RESEARCH" != "true" ]]; then
     run_research
+else
+    log_phase "Phase 3: Research"
+    log_info "Skipped (--skip-research)"
 fi
 
 # ── Phase 4: SYNTHESIZE ────────────────────────────────────────
-synthesize
+if ! synthesize; then
+    echo ""
+    diagnose_phase_failure "synthesize" "synthesis-docs" "synthesis-tooling"
+    print_cost_summary
+    log_error "Phase 4 (synthesis) failed. Exiting."
+    log_info "Re-run ultrainit to retry synthesis. Gather and research phases will be skipped."
+    exit 1
+fi
 
 # ── Phase 5: VALIDATE & WRITE ──────────────────────────────────
 validate_artifacts

@@ -27,14 +27,18 @@ mark_phase_complete() {
     local phase="$1"
     local state_file="$WORK_DIR/state.json"
 
-    if [[ ! -f "$state_file" ]]; then
+    if [[ ! -f "$state_file" ]] || ! jq empty "$state_file" 2>/dev/null; then
         echo '{}' > "$state_file"
     fi
 
     local tmp
     tmp=$(jq --arg p "$phase" --arg t "$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)" \
         '.[$p] = $t' "$state_file")
-    echo "$tmp" > "$state_file"
+
+    # Only write if jq produced valid output (prevents destroying state on failure)
+    if [[ -n "$tmp" ]] && echo "$tmp" | jq empty 2>/dev/null; then
+        echo "$tmp" > "$state_file"
+    fi
 }
 
 is_phase_complete() {
@@ -85,6 +89,23 @@ spin() {
     return $?
 }
 
+# Run a command in the background with a spinner, capturing stdout to a file.
+# Usage: run_with_spinner <label> <output_file> <stderr_file> <command> [args...]
+# Returns the command's exit code. stdout is written to output_file.
+run_with_spinner() {
+    local label="$1"
+    local output_file="$2"
+    local stderr_file="$3"
+    shift 3
+
+    "$@" > "$output_file" 2>>"$stderr_file" &
+    local pid=$!
+
+    spin "$pid" "$label"
+    local exit_code=$?
+    return $exit_code
+}
+
 # ── Misc ────────────────────────────────────────────────────────
 
 # Portable date -Iseconds (works on macOS with coreutils or fallback)
@@ -95,15 +116,17 @@ iso_date() {
 # ── Cost reporting ──────────────────────────────────────────────
 
 print_cost_summary() {
-    local cost_file="$WORK_DIR/cost.log"
-    if [[ ! -f "$cost_file" ]]; then
-        return 0
-    fi
+    local cost_dir="$WORK_DIR/costs"
+    [[ ! -d "$cost_dir" ]] && return 0
+
+    # Guard against nullglob: *.cost expands to nothing if no files exist,
+    # which would make cat block on stdin.
+    local cost_files=("$cost_dir"/*.cost)
+    [[ ${#cost_files[@]} -eq 0 || ! -f "${cost_files[0]}" ]] && return 0
 
     echo -e "\n${BOLD}Cost breakdown:${RESET}"
 
     local total=0
-    local phase_totals=()
     local current_phase=""
     local phase_sum=0
 
@@ -119,7 +142,7 @@ print_cost_summary() {
         fi
         phase_sum=$(echo "$phase_sum + $cost" | bc 2>/dev/null || echo "$phase_sum")
         total=$(echo "$total + $cost" | bc 2>/dev/null || echo "$total")
-    done < <(sort "$cost_file")
+    done < <(cat "${cost_files[@]}" 2>/dev/null | sort)
 
     # Print last phase
     if [[ -n "$current_phase" ]]; then

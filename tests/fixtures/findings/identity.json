@@ -1,0 +1,16 @@
+{
+  "name": "test-project",
+  "description": "A test project for unit testing",
+  "languages": [
+    {"name": "TypeScript", "percentage": 70},
+    {"name": "Python", "percentage": 30}
+  ],
+  "frameworks": [
+    {"name": "Next.js", "version": "14.1.0"},
+    {"name": "FastAPI", "version": "0.109.0"}
+  ],
+  "monorepo": false,
+  "packages": [],
+  "deployment": "Docker + AWS ECS",
+  "existing_ai_config": []
+}

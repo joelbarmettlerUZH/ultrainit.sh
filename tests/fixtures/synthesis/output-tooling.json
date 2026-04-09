@@ -1,0 +1,40 @@
+{
+  "skills": [
+    {
+      "name": "api-development",
+      "description": "Use when building or modifying API endpoints in src/api/. Covers route creation, middleware wiring, and request validation. Do NOT use for frontend components.",
+      "content": "---\nname: api-development\ndescription: Use when building or modifying API endpoints in src/api/. Covers route creation, middleware wiring, and request validation. Do NOT use for frontend components.\n---\n\n# API Development\n\nThis skill covers creating and modifying API endpoints.\n\n## Key Files\n\n- `src/api/routes.ts` — Route definitions\n- `src/api/middleware.ts` — Auth and validation middleware\n- `src/api/controllers/` — Request handlers\n- `src/repos/` — Data access layer\n- `tests/api/` — API test files\n\n## Workflow\n\n1. Define route in `src/api/routes.ts`\n2. Create controller in `src/api/controllers/`\n3. Add middleware as needed\n4. Write tests in `tests/api/`\n\n## Verification\n\nRun `npm test -- --grep api` to verify API changes."
+    },
+    {
+      "name": "database-migrations",
+      "description": "Use when creating or reviewing database schema changes. Covers migration creation and execution. Do NOT use for direct schema edits.",
+      "content": "---\nname: database-migrations\ndescription: Use when creating or reviewing database schema changes. Covers migration creation and execution. Do NOT use for direct schema edits.\n---\n\n# Database Migrations\n\n## Key Files\n\n- `src/db/migrations/` — Migration files\n- `src/db/schema.ts` — Current schema\n- `src/repos/` — Repository layer\n- `scripts/migrate.sh` — Migration runner\n\n## Workflow\n\n1. Create migration file with timestamp prefix\n2. Define up/down functions\n3. Run `scripts/migrate.sh` to apply\n\n## Verification\n\nRun `npm run db:status` to check migration state."
+    }
+  ],
+  "hooks": [
+    {
+      "filename": "format-on-save.sh",
+      "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "description": "Auto-format files after edits",
+      "content": "#!/usr/bin/env bash\nset -euo pipefail\n\nINPUT=$(cat)\nFILE=$(echo \"$INPUT\" | jq -r '.tool_input.file_path // empty')\n\nif [[ -n \"$FILE\" && \"$FILE\" == *.ts ]]; then\n    npx prettier --write \"$FILE\" 2>/dev/null || true\nfi\nexit 0"
+    }
+  ],
+  "subagents": [],
+  "mcp_servers": [
+    {
+      "name": "context7",
+      "command": "npx",
+      "args": ["-y", "@context7/mcp"],
+      "env": {},
+      "reason": "Up-to-date library documentation for Next.js and FastAPI"
+    }
+  ],
+  "settings_hooks": [
+    {
+      "event": "PostToolUse",
+      "command": ".claude/hooks/format-on-save.sh",
+      "matcher": "Write|Edit"
+    }
+  ]
+}

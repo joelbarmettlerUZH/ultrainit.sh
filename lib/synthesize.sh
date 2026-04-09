@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # lib/synthesize.sh — Phase 4: Two-pass synthesis
 
+# Ensure unmatched globs expand to nothing (not the literal pattern)
+shopt -s nullglob
+
 # Approximate tokens from byte count (chars/4 is a rough estimate)
 estimate_tokens() {
     local bytes="$1"
@@ -19,25 +22,29 @@ synthesize() {
     # Gets core findings + condensed module info (architecture, patterns,
     # conventions, gotchas — NOT full key_files, domain_terms, skill_opportunities)
 
-    log_progress "Building docs context..."
+    if [[ -f "$WORK_DIR/synthesis/output-docs.json" ]] && [[ "$FORCE" != "true" ]]; then
+        log_info "Pass 1 already complete (output-docs.json exists). Skipping."
+    else
+        log_progress "Building docs context..."
 
-    local docs_context="$WORK_DIR/synthesis-context-docs.txt"
-    build_docs_context "$docs_context"
+        local docs_context="$WORK_DIR/synthesis-context-docs.txt"
+        build_docs_context "$docs_context"
 
-    local docs_size docs_tokens
-    docs_size=$(wc -c < "$docs_context" | tr -d ' ')
-    docs_tokens=$(estimate_tokens "$docs_size")
-    log_info "Docs context: ${docs_size} bytes (~${docs_tokens} tokens)"
+        local docs_size docs_tokens
+        docs_size=$(wc -c < "$docs_context" | tr -d ' ')
+        docs_tokens=$(estimate_tokens "$docs_size")
+        log_info "Docs context: ${docs_size} bytes (~${docs_tokens} tokens)"
 
-    log_progress "Pass 1/2: Generating CLAUDE.md files (model: $SYNTH_MODEL)..."
+        log_progress "Pass 1/2: Generating CLAUDE.md files (model: $SYNTH_MODEL)..."
 
-    run_synthesis_pass \
-        "docs" \
-        "$SCRIPT_DIR/schemas/synthesis-docs.json" \
-        "$SCRIPT_DIR/prompts/synthesizer-docs.md" \
-        "$docs_context" \
-        "Generate comprehensive CLAUDE.md files for this codebase." \
-        || return 1
+        run_synthesis_pass \
+            "docs" \
+            "$SCRIPT_DIR/schemas/synthesis-docs.json" \
+            "$SCRIPT_DIR/prompts/synthesizer-docs.md" \
+            "$docs_context" \
+            "Generate comprehensive CLAUDE.md files for this codebase." \
+            || return 1
+    fi
 
     # ── Pass 2: Skills, hooks, subagents ────────────────────────
     # Gets the generated CLAUDE.md (already distilled) plus only the
@@ -303,28 +310,41 @@ PROMPT_FOOTER
     fi
 
     # Run with up to 3 retries (transient API errors on large-context calls)
-    local max_retries=3
+    local max_retries="${ULTRAINIT_MAX_RETRIES:-3}"
     local attempt=0
     local raw_output=""
+
+    local output_tmpfile="$WORK_DIR/logs/synthesis-${pass_name}.stdout"
 
     while [[ $attempt -lt $max_retries ]]; do
         attempt=$((attempt + 1))
         : > "$stderr_file"
+        : > "$output_tmpfile"
 
-        raw_output=$(cat "$prompt_file" | claude -p - \
-            --model "$SYNTH_MODEL" \
-            --output-format json \
-            --json-schema "$schema" \
-            --allowedTools "Read" \
-            --append-system-prompt-file "$prompt_file_path" \
-            --max-budget-usd "$pass_budget" \
-            2>>"$stderr_file") || true
+        run_with_spinner \
+            "Synthesis pass '$pass_name' running (attempt $attempt)..." \
+            "$output_tmpfile" \
+            "$stderr_file" \
+            bash -c "cat '$prompt_file' | claude -p - \
+                --model '$SYNTH_MODEL' \
+                --output-format json \
+                --json-schema '$schema' \
+                --allowedTools 'Read' \
+                --append-system-prompt-file '$prompt_file_path' \
+                --max-budget-usd '$pass_budget'" \
+            || true
+
+        raw_output=$(cat "$output_tmpfile")
 
         # Check for API-level errors
         local is_error
         is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
         local error_msg
-        error_msg=$(echo "$raw_output" | jq -r '.result // ""' 2>/dev/null)
+        error_msg=$(echo "$raw_output" | jq -r '
+            (if (.errors // [] | length) > 0 then (.errors | join("; "))
+             elif .result then .result
+             else "" end)
+        ' 2>/dev/null)
 
         if [[ "$is_error" != "true" ]] && [[ -n "$raw_output" ]]; then
             break  # success
@@ -389,11 +409,11 @@ postprocess_descriptions() {
         local content
         content=$(jq -r ".skills[$i].content" "$output_file")
 
-        if echo "$content" | awk '/^description:/,/^[a-z]/' | grep -q '[<>]'; then
+        if echo "$content" | awk '/^description:/,/^([a-z]|---)/' | grep -q '[<>]'; then
             local new_content
             new_content=$(echo "$content" | awk '
                 /^description:/ { in_desc=1 }
-                in_desc && /^[a-z]/ && !/^description:/ { in_desc=0 }
+                in_desc && (/^[a-z]/ || /^---/) && !/^description:/ { in_desc=0 }
                 in_desc { gsub(/</, "\""); gsub(/>/, "\"") }
                 { print }
             ')
@@ -411,11 +431,11 @@ postprocess_descriptions() {
         local content
         content=$(jq -r ".subagents[$i].content" "$output_file")
 
-        if echo "$content" | awk '/^description:/,/^[a-z]/' | grep -q '[<>]'; then
+        if echo "$content" | awk '/^description:/,/^([a-z]|---)/' | grep -q '[<>]'; then
             local new_content
             new_content=$(echo "$content" | awk '
                 /^description:/ { in_desc=1 }
-                in_desc && /^[a-z]/ && !/^description:/ { in_desc=0 }
+                in_desc && (/^[a-z]/ || /^---/) && !/^description:/ { in_desc=0 }
                 in_desc { gsub(/</, "\""); gsub(/>/, "\"") }
                 { print }
             ')

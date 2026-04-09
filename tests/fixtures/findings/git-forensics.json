@@ -1,0 +1,9 @@
+{
+  "hotspots": [{"path": "src/api/routes.ts", "change_count": 45}],
+  "temporal_coupling": [{"file_a": "src/api/routes.ts", "file_b": "src/api/middleware.ts", "co_change_count": 12}],
+  "bug_fix_density": [{"path": "src/auth/login.ts", "fix_count": 8}],
+  "ownership_diffusion": [{"path": "src/utils/helpers.ts", "author_count": 6}],
+  "recent_activity": [{"directory": "src/api", "change_count": 22}],
+  "commit_patterns": {"conventional_commits": true, "ticket_references": "PROJ-\\d+"},
+  "branch_patterns": ["feature/*", "fix/*"]
+}
