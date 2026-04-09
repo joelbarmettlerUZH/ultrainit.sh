@@ -26,42 +26,42 @@ gather_evidence() {
             'Analyze this codebase. Determine the project identity: name, description, languages, frameworks, monorepo structure, deployment target, and existing AI config files.' \
             '$schemas/identity.json' \
             'Read,Bash(find:*),Bash(ls:*),Bash(cat:*),Bash(head:*)' \
-            haiku" \
+            $AGENT_MODEL" \
         "run_agent commands \
             'Find every build, test, lint, format, and typecheck command in this project. Check package.json, Makefile, CI pipelines, pyproject.toml, Cargo.toml, and task runners. Note which are CI-verified.' \
             '$schemas/commands.json' \
             'Read,Bash(find:*),Bash(cat:*),Bash(grep:*),Bash(jq:*)' \
-            haiku" \
+            $AGENT_MODEL" \
         "run_agent git-forensics \
             'Analyze the git history of this repository. Find hotspots, temporal coupling, bug-fix density, ownership diffusion, recent activity, commit patterns, and branch naming patterns.' \
             '$schemas/git-forensics.json' \
             'Bash(git:*)' \
-            sonnet" \
+            $AGENT_MODEL" \
         "run_agent patterns \
             'Examine this codebase for architectural patterns and conventions. Look for design patterns, error handling, import conventions, naming conventions, state management, auth patterns, testing patterns, and configuration management. Cite specific files as evidence.' \
             '$schemas/patterns.json' \
             'Read,Bash(find:*),Bash(grep:*),Glob' \
-            sonnet" \
+            $AGENT_MODEL" \
         "run_agent tooling \
             'Find every code quality tool configured in this project (linters, formatters, type checkers, pre-commit hooks). For each: name, config path, what it enforces, whether it runs in CI, and key rules.' \
             '$schemas/tooling.json' \
             'Read,Bash(find:*),Bash(cat:*),Bash(ls:*)' \
-            haiku" \
+            $AGENT_MODEL" \
         "run_agent docs-scanner \
             'Find and summarize all existing documentation in this repo: READMEs, CONTRIBUTING, ADRs, docs directories, API docs, AI config files. Identify documented conventions and undocumented gaps.' \
             '$schemas/docs.json' \
             'Read,Bash(find:*),Bash(head:*),Bash(wc:*)' \
-            haiku" \
+            $AGENT_MODEL" \
         "run_agent security-scan \
             'Scan for files that should be protected from AI agent modification: secrets, migrations, lock files, generated files, CI configs, and security-critical code.' \
             '$schemas/security.json' \
             'Read,Bash(find:*),Bash(grep:*),Bash(ls:*)' \
-            haiku" \
+            $AGENT_MODEL" \
         "run_agent structure-scout \
             'Map the directory structure of this project. Identify EVERY directory that deserves deep analysis — dig at least 3 levels deep. Classify each by role and priority. Be thorough: a typical full-stack app has 15-30 directories worth analyzing.' \
             '$schemas/structure-scout.json' \
             'Bash(find:*),Bash(ls:*),Bash(wc:*),Read' \
-            sonnet" \
+            $AGENT_MODEL" \
         || true
 
     # ── Check for critical failures before proceeding ──────────
@@ -164,7 +164,7 @@ run_deep_dive_agents() {
             'Deeply analyze the directory at ${dir_path}/ in this project. This directory is classified as: ${dir_role}. Brief context: ${dir_desc}. Produce an exhaustive analysis covering: architecture and internal organization, key files (read at least 5-10 files), coding patterns with examples, conventions, dependencies, gotchas, and skill opportunities. Be thorough — read actual source files, not just directory listings.' \
             '$schemas/module-analysis.json' \
             'Read,Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(wc:*),Bash(ls:*),Glob' \
-            sonnet")
+            $AGENT_MODEL")
     done
 
     if [[ ${#module_calls[@]} -eq 0 ]]; then
@@ -247,7 +247,7 @@ run_fallback_module_analyzers() {
             'Deeply analyze the directory at ${rel_name}/ in this project. Produce an exhaustive analysis covering: architecture, key files, patterns, conventions, dependencies, gotchas, and skill opportunities.' \
             '$schemas/module-analysis.json' \
             'Read,Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(wc:*),Bash(ls:*),Glob' \
-            sonnet")
+            $AGENT_MODEL")
     done
 
     run_agents_parallel "${module_calls[@]}"
