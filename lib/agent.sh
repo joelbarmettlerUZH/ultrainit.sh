@@ -150,10 +150,25 @@ run_agents_parallel() {
         agent_name=$(echo "$agent_call" | sed -E "s/run_agent ([^ ]+).*/\1/")
         names+=("$agent_name")
 
-        # Write the call to a temp script that sources the necessary libs
+        # Write the call to a temp script that sources the necessary libs.
+        # We explicitly set all parent variables BEFORE sourcing libs so that
+        # re-sourcing config.sh cannot overwrite computed values (e.g. AGENT_BUDGET).
         local script="$tmp_dir/agent-${idx}.sh"
         cat > "$script" <<AGENT_SCRIPT
 #!/usr/bin/env bash
+set -euo pipefail
+
+# Propagate parent state explicitly; these literal values are baked in
+# by the parent shell so they survive re-sourcing of config.sh
+export WORK_DIR="$WORK_DIR"
+export SCRIPT_DIR="$SCRIPT_DIR"
+export TARGET_DIR="$TARGET_DIR"
+export FORCE="$FORCE"
+export VERBOSE="$VERBOSE"
+export AGENT_MODEL="$AGENT_MODEL"
+export AGENT_BUDGET="$AGENT_BUDGET"
+export TOTAL_BUDGET="$TOTAL_BUDGET"
+
 source "$SCRIPT_DIR/lib/utils.sh"
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/agent.sh"
