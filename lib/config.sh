@@ -65,12 +65,14 @@ set_agent_budget() {
 # ── Budget enforcement ──────────────────────────────────────────
 
 # Check if we've exceeded the total budget. Returns 0 if OK, 1 if over.
+# Reads per-agent cost files from $WORK_DIR/costs/ (one file per agent,
+# no shared file, so parallel agents can't corrupt each other's data).
 check_budget() {
-    local cost_file="$WORK_DIR/cost.log"
-    [[ ! -f "$cost_file" ]] && return 0
+    local cost_dir="$WORK_DIR/costs"
+    [[ ! -d "$cost_dir" ]] && return 0
 
     local spent
-    spent=$(awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' "$cost_file" 2>/dev/null || echo "0")
+    spent=$(cat "$cost_dir"/*.cost 2>/dev/null | awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' 2>/dev/null || echo "0")
 
     local over
     over=$(echo "$spent >= $TOTAL_BUDGET" | bc 2>/dev/null || echo "0")
@@ -84,10 +86,10 @@ check_budget() {
 
 # Get remaining budget
 get_remaining_budget() {
-    local cost_file="$WORK_DIR/cost.log"
+    local cost_dir="$WORK_DIR/costs"
     local spent="0"
-    if [[ -f "$cost_file" ]]; then
-        spent=$(awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' "$cost_file" 2>/dev/null || echo "0")
+    if [[ -d "$cost_dir" ]]; then
+        spent=$(cat "$cost_dir"/*.cost 2>/dev/null | awk -F'|' '{ sum += $3 } END { printf "%.4f", sum }' 2>/dev/null || echo "0")
     fi
     echo "scale=2; $TOTAL_BUDGET - $spent" | bc 2>/dev/null || echo "$TOTAL_BUDGET"
 }
@@ -233,7 +235,7 @@ setup_work_dir() {
     WORK_DIR="${target_dir}/.ultrainit"
     export WORK_DIR
 
-    mkdir -p "$WORK_DIR"/{findings/modules,synthesis/skills,synthesis/hooks,synthesis/subagents,logs,backups}
+    mkdir -p "$WORK_DIR"/{findings/modules,synthesis/skills,synthesis/hooks,synthesis/subagents,logs,backups,costs}
 
     # Add .ultrainit/ to .gitignore if not present
     if [[ -f "${target_dir}/.gitignore" ]]; then

@@ -281,7 +281,7 @@ All intermediate state lives in `.ultrainit/` inside the project root:
 │   ├── synthesis-docs.stderr
 │   └── ...
 ├── backups/            # Backups of overwritten files
-├── cost.log            # Per-agent cost tracking
+├── costs/              # Per-agent cost files (one per agent, avoids race conditions)
 └── state.json          # Phase completion tracking (for resume)
 ```
 

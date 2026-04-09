@@ -202,8 +202,8 @@ validate_hook() {
         err=$((err + 1))
     fi
 
-    # Reads from stdin
-    if ! echo "$hook_content" | grep -qE '(cat$|cat\)|read |stdin)'; then
+    # Reads from stdin (hooks receive JSON on stdin from Claude Code)
+    if ! echo "$hook_content" | grep -qE '(cat\b|read |stdin|/dev/stdin|jq |< /dev/)'; then
         echo "Hook $hook_name: doesn't appear to read JSON from stdin" >> "$issues_file"
         log_warn "Hook $hook_name: may not read stdin"
         err=$((err + 1))

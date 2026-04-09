@@ -31,7 +31,7 @@ write_artifacts() {
         sub_content=$(jq -r ".subdirectory_claude_mds[$i].content" "$output")
 
         mkdir -p "$sub_path"
-        echo "$sub_content" > "$sub_path/CLAUDE.md"
+        printf '%s\n' "$sub_content" > "$sub_path/CLAUDE.md"
         log_success "Wrote $sub_path/CLAUDE.md"
     done
 
@@ -151,8 +151,6 @@ overwrite_existing() {
         -not -path './node_modules/*' \
         -not -path './vendor/*' \
         -delete 2>/dev/null
-    local removed_claude
-    removed_claude=$(find . -name "CLAUDE.md" -not -path './.ultrainit/*' 2>/dev/null | wc -l)
 
     # Remove .claude/ skills, agents, hooks (but preserve mcp.json and settings.json user config)
     rm -rf .claude/skills .claude/agents .claude/hooks
@@ -206,10 +204,19 @@ merge_settings() {
 
     mkdir -p .claude
     if [[ -f .claude/settings.json ]]; then
-        # Deep merge: add new hooks, preserve existing
+        # Deep merge: concatenate hook arrays per event type, preserve other keys.
+        # jq's * operator replaces arrays, so we merge hooks manually.
         local existing
         existing=$(cat .claude/settings.json)
-        jq -s '.[0] * .[1]' <(echo "$existing") <(echo "$hooks_json") > .claude/settings.json
+        jq -n --argjson old "$existing" --argjson new "$hooks_json" '
+            ($old * ($new | del(.hooks))) |
+            .hooks = (
+                reduce ([$old.hooks // {}, $new.hooks // {} | keys[]] | unique)[] as $event (
+                    {};
+                    .[$event] = (($old.hooks[$event] // []) + ($new.hooks[$event] // []))
+                )
+            )
+        ' > .claude/settings.json
         log_success "Merged hooks into existing .claude/settings.json"
     else
         echo "$hooks_json" | jq '.' > .claude/settings.json
