@@ -6,8 +6,8 @@ load '/usr/local/lib/bats-support/load'
 load '/usr/local/lib/bats-assert/load'
 load '/usr/local/lib/bats-file/load'
 
-# Project root (the mounted workspace)
-export PROJECT_ROOT="/workspace"
+# Project root — detect from test_helper.bash location (tests/helpers/)
+export PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export SCRIPT_DIR="$PROJECT_ROOT"
 
 # Common setup — call this from each .bats file's setup() function.
