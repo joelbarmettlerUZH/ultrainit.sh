@@ -68,28 +68,36 @@ run_agent() {
     # For large prompts, pipe via stdin to avoid "argument list too long"
     local raw_output
     local prompt_len=${#prompt}
+    local output_tmpfile="$WORK_DIR/logs/${name}.stdout"
 
     if [[ $prompt_len -gt 100000 ]]; then
-        raw_output=$(echo "$prompt" | claude -p - \
-            --model "$model" \
-            --output-format json \
-            --json-schema "$schema" \
-            --allowedTools "$allowed_tools" \
-            $system_prompt_flag \
-            --max-budget-usd "$AGENT_BUDGET" \
-            2>>"$stderr_file")
+        run_with_spinner \
+            "Agent $name running..." \
+            "$output_tmpfile" \
+            "$stderr_file" \
+            bash -c "echo \"\$1\" | claude -p - \
+                --model '$model' \
+                --output-format json \
+                --json-schema '$schema' \
+                --allowedTools '$allowed_tools' \
+                $system_prompt_flag \
+                --max-budget-usd '$AGENT_BUDGET'" _ "$prompt"
     else
-        raw_output=$(claude -p "$prompt" \
-            --model "$model" \
-            --output-format json \
-            --json-schema "$schema" \
-            --allowedTools "$allowed_tools" \
-            $system_prompt_flag \
-            --max-budget-usd "$AGENT_BUDGET" \
-            2>>"$stderr_file")
+        run_with_spinner \
+            "Agent $name running..." \
+            "$output_tmpfile" \
+            "$stderr_file" \
+            claude -p "$prompt" \
+                --model "$model" \
+                --output-format json \
+                --json-schema "$schema" \
+                --allowedTools "$allowed_tools" \
+                $system_prompt_flag \
+                --max-budget-usd "$AGENT_BUDGET"
     fi
 
     local exit_code=$?
+    raw_output=$(cat "$output_tmpfile" 2>/dev/null)
 
     if [[ $exit_code -ne 0 ]]; then
         # claude often writes errors to stdout, not stderr; capture both
