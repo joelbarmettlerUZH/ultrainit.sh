@@ -1,0 +1,7 @@
+{
+  "project_purpose": "A full-stack web application for managing tasks",
+  "deployment_target": "Docker + AWS ECS",
+  "never_do": "Never edit migration files directly",
+  "common_mistakes": "Forgetting to run database migrations after pulling",
+  "additional_context": "The auth system uses JWT tokens with refresh rotation"
+}

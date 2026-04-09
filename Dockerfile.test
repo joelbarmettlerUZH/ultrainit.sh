@@ -1,0 +1,19 @@
+FROM bash:5
+
+RUN apk add --no-cache \
+    jq \
+    bc \
+    git \
+    coreutils \
+    grep \
+    sed \
+    gawk \
+    && git clone --depth 1 --branch v1.11.1 https://github.com/bats-core/bats-core.git /tmp/bats-core \
+    && /tmp/bats-core/install.sh /usr/local \
+    && rm -rf /tmp/bats-core \
+    && git clone --depth 1 https://github.com/bats-core/bats-support.git /usr/local/lib/bats-support \
+    && git clone --depth 1 https://github.com/bats-core/bats-assert.git /usr/local/lib/bats-assert \
+    && git clone --depth 1 https://github.com/bats-core/bats-file.git /usr/local/lib/bats-file
+
+WORKDIR /workspace
+ENTRYPOINT ["bats"]

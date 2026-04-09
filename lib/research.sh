@@ -54,6 +54,7 @@ run_research() {
 
     # ── Run research agents in parallel ─────────────────────────
 
+    export AGENT_PHASE="research"
     local research_calls=()
 
     # Domain researcher

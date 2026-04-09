@@ -1,0 +1,8 @@
+{
+  "build": [{"command": "npm run build", "scope": "project", "ci_verified": true, "source": "package.json"}],
+  "test": [{"command": "npm test", "scope": "project", "ci_verified": true, "source": "package.json"}],
+  "lint": [{"command": "npm run lint", "scope": "project", "ci_verified": true, "source": "package.json"}],
+  "format": [{"command": "npx prettier --write .", "scope": "project", "ci_verified": false, "source": "package.json"}],
+  "typecheck": [{"command": "npx tsc --noEmit", "scope": "project", "ci_verified": true, "source": "package.json"}],
+  "other": []
+}

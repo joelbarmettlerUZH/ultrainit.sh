@@ -1,0 +1,6 @@
+{
+  "protected_files": [
+    {"path_pattern": ".env*", "reason": "Contains secrets", "safe_alternative": "Use .env.example as template"},
+    {"path_pattern": "*.lock", "reason": "Lock files should not be edited manually", "safe_alternative": "Run package manager commands"}
+  ]
+}

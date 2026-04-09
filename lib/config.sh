@@ -44,6 +44,11 @@ export VALIDATION_BUDGET="${VALIDATION_BUDGET:-}"
 export AGENT_BUDGET="${AGENT_BUDGET:-}"
 
 compute_budgets() {
+    # Default to 100.00 if TOTAL_BUDGET is empty or non-numeric
+    if [[ -z "$TOTAL_BUDGET" ]] || ! echo "$TOTAL_BUDGET" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+        TOTAL_BUDGET="100.00"
+    fi
+
     GATHER_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_GATHER / 100" | bc)
     RESEARCH_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_RESEARCH / 100" | bc)
     SYNTH_BUDGET=$(echo "scale=2; $TOTAL_BUDGET * $BUDGET_PCT_SYNTHESIS / 100" | bc)
@@ -57,7 +62,17 @@ compute_budgets() {
 set_agent_budget() {
     local phase_budget="$1"
     local agent_count="$2"
-    [[ "$agent_count" -lt 1 ]] && agent_count=1
+
+    # Default phase_budget to 1.00 if empty or non-numeric
+    if [[ -z "$phase_budget" ]] || ! echo "$phase_budget" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+        phase_budget="1.00"
+    fi
+
+    # Ensure agent_count is a positive integer
+    if ! [[ "$agent_count" =~ ^[0-9]+$ ]] || [[ "$agent_count" -lt 1 ]]; then
+        agent_count=1
+    fi
+
     AGENT_BUDGET=$(echo "scale=2; $phase_budget / $agent_count" | bc)
     export AGENT_BUDGET
 }

@@ -1,0 +1,7 @@
+{
+  "documents": [
+    {"path": "README.md", "type": "readme", "summary": "Project overview and setup instructions."}
+  ],
+  "documented_conventions": ["API naming", "folder structure"],
+  "undocumented_gaps": ["error handling patterns", "testing strategy"]
+}

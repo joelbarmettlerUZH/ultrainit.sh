@@ -1,0 +1,6 @@
+{
+  "patterns": [
+    {"name": "Repository pattern", "type": "design", "evidence_files": ["src/repos/user.ts"], "description": "Data access via repository classes", "is_consistent": true},
+    {"name": "Barrel exports", "type": "import", "evidence_files": ["src/components/index.ts"], "description": "Re-exports from index.ts", "is_consistent": true}
+  ]
+}

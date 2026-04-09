@@ -1,0 +1,6 @@
+{
+  "tools": [
+    {"name": "ESLint", "config_path": ".eslintrc.json", "enforced_in_ci": true, "has_pre_commit": false},
+    {"name": "Prettier", "config_path": ".prettierrc", "enforced_in_ci": false, "has_pre_commit": true}
+  ]
+}
