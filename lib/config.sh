@@ -118,7 +118,14 @@ detect_platform() {
         Darwin)  PLATFORM="macos" ;;
         Linux)   PLATFORM="linux" ;;
         MINGW*|MSYS*|CYGWIN*)  PLATFORM="windows" ;;
-        *)       PLATFORM="unknown" ;;
+        *)
+            PLATFORM="unknown"
+            log_warn "Unrecognized platform: $(uname -s)"
+            log_warn "ultrainit is tested on macOS, Linux, and Windows (Git Bash)."
+            log_warn "On Windows, use Git Bash (included with Git for Windows):"
+            log_warn "  https://git-scm.com/download/win"
+            log_warn "Continuing anyway, but some tools may be missing."
+            ;;
     esac
     export PLATFORM
 }
