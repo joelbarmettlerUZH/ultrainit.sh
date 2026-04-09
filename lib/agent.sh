@@ -87,6 +87,10 @@ run_agent() {
     local exit_code=$?
 
     if [[ $exit_code -ne 0 ]]; then
+        # claude often writes errors to stdout, not stderr; capture both
+        if [[ -n "$raw_output" ]]; then
+            echo "stdout: $raw_output" >> "$stderr_file"
+        fi
         log_error "Agent $name failed (exit $exit_code). See $stderr_file"
         if [[ "$VERBOSE" == "true" ]]; then
             cat "$stderr_file" >&2
