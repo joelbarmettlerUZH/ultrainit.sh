@@ -107,8 +107,18 @@ run_agent() {
     local is_error
     is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
     if [[ "$is_error" == "true" ]]; then
-        log_error "Agent $name returned an error: $(echo "$raw_output" | jq -r '.result // "unknown"')"
+        # Extract the most useful error message from the response
+        local error_msg
+        error_msg=$(echo "$raw_output" | jq -r '
+            (if (.errors // [] | length) > 0 then (.errors | join("; "))
+             elif .result then .result
+             else "unknown error" end)
+        ' 2>/dev/null)
+        log_error "Agent $name failed: $error_msg"
         echo "$raw_output" >> "$stderr_file"
+        if [[ "$VERBOSE" == "true" ]]; then
+            cat "$stderr_file" >&2
+        fi
         return 1
     fi
 

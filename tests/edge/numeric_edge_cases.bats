@@ -53,14 +53,35 @@ teardown() {
     [[ "$GATHER_BUDGET" == "50.00" ]]
 }
 
-@test "check_budget with TOTAL_BUDGET=0 blocks all agents" {
-    # PREDICTION: spent=0.0000, bc evaluates "0.0000 >= 0" = true,
-    # so check_budget returns failure. ALL agents are blocked even with
-    # zero spending. This is arguably a bug.
+@test "check_budget_sanity rejects budget too low for per-agent calls" {
+    TOTAL_BUDGET="2.00"
+    AGENT_MODEL="sonnet"
+    compute_budgets  # GATHER_BUDGET = 1.00, per-agent = 0.02
+
+    run check_budget_sanity
+    assert_failure
+    assert_output --partial "too low"
+}
+
+@test "check_budget_sanity accepts adequate budget" {
+    TOTAL_BUDGET="50.00"
+    AGENT_MODEL="sonnet"
+    compute_budgets
+
+    run check_budget_sanity
+    assert_success
+}
+
+@test "check_budget with TOTAL_BUDGET=0 and no cost files returns success" {
+    # With no cost files, the guard returns early (nothing to check).
     TOTAL_BUDGET="0"
-    # No cost files at all
     run check_budget
-    # With 0 budget and 0 spending: "0.0000 >= 0" = true in bc
-    # So this returns failure — every agent gets skipped.
-    assert_failure  # DOCUMENTS BEHAVIOR: zero budget blocks everything
+    assert_success
+}
+
+@test "check_budget with TOTAL_BUDGET=0 and any spending returns failure" {
+    TOTAL_BUDGET="0"
+    echo "gather|agent|0.01" > "$WORK_DIR/costs/agent.cost"
+    run check_budget
+    assert_failure
 }

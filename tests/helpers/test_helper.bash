@@ -10,7 +10,13 @@ load '/usr/local/lib/bats-file/load'
 export PROJECT_ROOT="/workspace"
 export SCRIPT_DIR="$PROJECT_ROOT"
 
-# Common setup — call this from each .bats file's setup() function
+# Common setup — call this from each .bats file's setup() function.
+#
+# Sources ALL libs to match the real runtime environment (ultrainit.sh
+# sources everything at startup). This is critical — bugs caused by
+# interaction between libs (e.g., synthesize.sh setting nullglob that
+# breaks config.sh's glob patterns) are only visible when all libs are
+# loaded together.
 _common_setup() {
     export TEST_TMPDIR="$(mktemp -d)"
     export WORK_DIR="$TEST_TMPDIR/workdir"
@@ -19,7 +25,7 @@ _common_setup() {
     mkdir -p "$TARGET_DIR"
     echo '{}' > "$WORK_DIR/state.json"
 
-    # Set defaults that lib/config.sh would normally set
+    # Set defaults BEFORE sourcing libs (config.sh uses ${VAR:-default})
     export FORCE="false"
     export NON_INTERACTIVE="true"
     export VERBOSE="false"
@@ -38,6 +44,19 @@ _common_setup() {
 
     # Disable color codes in test output
     export RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' RESET=''
+
+    # Source ALL libs together, matching ultrainit.sh's startup.
+    # This ensures shell options (nullglob, etc.) and function
+    # definitions match the real runtime.
+    source "$PROJECT_ROOT/lib/utils.sh"
+    source "$PROJECT_ROOT/lib/config.sh"
+    source "$PROJECT_ROOT/lib/agent.sh"
+    source "$PROJECT_ROOT/lib/gather.sh"
+    source "$PROJECT_ROOT/lib/ask.sh"
+    source "$PROJECT_ROOT/lib/research.sh"
+    source "$PROJECT_ROOT/lib/synthesize.sh"
+    source "$PROJECT_ROOT/lib/validate.sh"
+    source "$PROJECT_ROOT/lib/merge.sh"
 }
 
 _common_teardown() {

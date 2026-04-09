@@ -100,9 +100,12 @@ iso_date() {
 
 print_cost_summary() {
     local cost_dir="$WORK_DIR/costs"
-    if [[ ! -d "$cost_dir" ]] || ! ls "$cost_dir"/*.cost &>/dev/null; then
-        return 0
-    fi
+    [[ ! -d "$cost_dir" ]] && return 0
+
+    # Guard against nullglob: *.cost expands to nothing if no files exist,
+    # which would make cat block on stdin.
+    local cost_files=("$cost_dir"/*.cost)
+    [[ ${#cost_files[@]} -eq 0 || ! -f "${cost_files[0]}" ]] && return 0
 
     echo -e "\n${BOLD}Cost breakdown:${RESET}"
 
@@ -122,7 +125,7 @@ print_cost_summary() {
         fi
         phase_sum=$(echo "$phase_sum + $cost" | bc 2>/dev/null || echo "$phase_sum")
         total=$(echo "$total + $cost" | bc 2>/dev/null || echo "$total")
-    done < <(cat "$cost_dir"/*.cost 2>/dev/null | sort)
+    done < <(cat "${cost_files[@]}" 2>/dev/null | sort)
 
     # Print last phase
     if [[ -n "$current_phase" ]]; then
