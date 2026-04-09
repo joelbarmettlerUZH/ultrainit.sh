@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ── Windows shell check ───────────────────────────────────────
+# If someone runs this from CMD or PowerShell, bash may not be
+# available or may lack the features we need. Detect and warn early.
+if [[ -z "${BASH_VERSION:-}" ]]; then
+    echo "ERROR: ultrainit requires bash. You appear to be running a different shell." >&2
+    echo "" >&2
+    echo "On Windows, use Git Bash (included with Git for Windows):" >&2
+    echo "  1. Install Git for Windows: https://git-scm.com/download/win" >&2
+    echo "  2. Open 'Git Bash' from the Start menu" >&2
+    echo "  3. Re-run this script from Git Bash" >&2
+    exit 1
+fi
+
 # ── Resolve script location ────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export SCRIPT_DIR
