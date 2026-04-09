@@ -311,7 +311,7 @@ Rules:
 - Skills must have ≥3 codebase-specific file references
 - Skills must have a description with trigger phrases and a 'Do NOT use for' boundary
 - Keep the skill name and overall structure, just fix the flagged issues" \
-            --model sonnet \
+            --model "$AGENT_MODEL" \
             --output-format json \
             --json-schema "$revision_schema" \
             --allowedTools "" \

@@ -150,6 +150,9 @@ ask_developer
 # ── Phase 3: RESEARCH ──────────────────────────────────────────
 if [[ "$SKIP_RESEARCH" != "true" ]]; then
     run_research
+else
+    log_phase "Phase 3: Research"
+    log_info "Skipped (--skip-research)"
 fi
 
 # ── Phase 4: SYNTHESIZE ────────────────────────────────────────
