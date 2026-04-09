@@ -139,6 +139,9 @@ check_dependencies() {
     if ! command -v claude &>/dev/null; then
         log_error "claude CLI not found. Install: https://docs.anthropic.com/en/docs/claude-code/overview"
         missing=1
+    elif ! claude auth status 2>/dev/null | jq -e '.loggedIn == true' &>/dev/null; then
+        log_error "claude is installed but not logged in. Run: claude auth login"
+        missing=1
     fi
 
     # jq: required for all JSON processing
