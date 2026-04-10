@@ -1,0 +1,69 @@
+{
+  "protected_files": [
+    {
+      "path_pattern": ".github/workflows/*.yml",
+      "reason": "CI/CD pipeline definitions — incorrect edits can break releases, test runs, or the Docker image publish workflow.",
+      "safe_alternative": "Discuss pipeline changes with the team and test in a feature branch before merging to main."
+    },
+    {
+      "path_pattern": "bundle.sh",
+      "reason": "Release bundling script that packages ultrainit.sh into the distributable single-file artifact. Errors here silently ship broken releases.",
+      "safe_alternative": "Run `make release` (or `make test-all` first) and verify the bundle output manually before pushing a tag."
+    },
+    {
+      "path_pattern": "Dockerfile.test",
+      "reason": "Defines the isolated bats-core test environment. Changes affect every CI test run and the published GHCR image.",
+      "safe_alternative": "Build and verify locally with `make test-image` before committing. Changes trigger an automatic image rebuild on push to main."
+    },
+    {
+      "path_pattern": "Makefile",
+      "reason": "Orchestrates build, test, and release targets. Incorrect changes break the developer workflow and CI.",
+      "safe_alternative": "Edit targets carefully; run `make test-all` after any change to verify nothing regressed."
+    },
+    {
+      "path_pattern": ".claude/settings.json",
+      "reason": "Claude Code settings including hook wiring. Hand-editing can desync hooks from their scripts.",
+      "safe_alternative": "Use `ultrainit.sh` to regenerate, or use the Claude Code settings UI. For hook changes, update the hook script and re-run merge logic."
+    },
+    {
+      "path_pattern": "lib/config.sh",
+      "reason": "Security-critical: handles dependency checking, Claude auth verification (`claude auth status`), budget arithmetic, and environment setup. Errors here can silently bypass auth or blow the budget.",
+      "safe_alternative": "Make changes in a branch, add a corresponding unit test in `tests/unit/config_budget.bats` or `tests/unit/config_workdir.bats`, and run `make test-unit` before merging."
+    },
+    {
+      "path_pattern": "lib/agent.sh",
+      "reason": "Security-critical: controls budget enforcement (`--max-budget-usd`), cost tracking, API response validation, and agent spawning. A bug here can cause runaway API spend or accept malformed outputs.",
+      "safe_alternative": "Add a test in `tests/unit/agent_run.bats` or `tests/unit/agent_helpers.bats` covering the changed behavior. Run `make test-unit` before merging."
+    },
+    {
+      "path_pattern": "lib/validate.sh",
+      "reason": "Enforces quality gates on all generated artifacts (CLAUDE.md length, generic-phrase detection, hook wiring). Weakening checks here silently degrades output quality.",
+      "safe_alternative": "Add regression tests in `tests/unit/validate_claude_md.bats` or `tests/unit/validate_hook.bats` before modifying validation rules."
+    },
+    {
+      "path_pattern": "scripts/validate-skill.sh",
+      "reason": "Standalone validator that enforces skill frontmatter, file-reference minimums, and generic-phrase bans. Used in Phase 5 and tested independently.",
+      "safe_alternative": "Update `tests/scripts/validate_skill.bats` alongside any rule changes and run `make test-scripts` to verify."
+    },
+    {
+      "path_pattern": "scripts/validate-subagent.sh",
+      "reason": "Standalone validator for subagent frontmatter and tool scoping. Same risk as validate-skill.sh.",
+      "safe_alternative": "Update `tests/scripts/validate_subagent.bats` alongside any rule changes and run `make test-scripts` to verify."
+    },
+    {
+      "path_pattern": "schemas/*.json",
+      "reason": "JSON schemas define the contract between orchestrator and every agent. Changing a schema breaks structured output parsing for all agents that use it, potentially silently producing empty findings.",
+      "safe_alternative": "When adding fields, add them as optional. Update the corresponding fixture in `tests/fixtures/findings/` and run `make test-all` to catch breakage."
+    },
+    {
+      "path_pattern": "tests/fixtures/**/*.json",
+      "reason": "Realistic fixtures that all unit and integration tests depend on. Incorrect edits cause tests to pass against a fantasy that doesn't match real claude output.",
+      "safe_alternative": "Capture real `claude -p --output-format json` output to update fixtures. Never hand-craft values — they must match the actual response envelope format."
+    },
+    {
+      "path_pattern": ".gitignore",
+      "reason": "Controls what gets committed. Accidentally removing `.ultrainit/` would commit intermediate findings (including potentially sensitive developer answers) to the repo.",
+      "safe_alternative": "Append new patterns with `echo 'pattern' >> .gitignore` rather than rewriting the file."
+    }
+  ]
+}

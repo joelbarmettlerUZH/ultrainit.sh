@@ -1,0 +1,314 @@
+{
+  "module_path": "prompts/",
+  "purpose": "System prompt markdown files fed to each `claude -p` agent invocation across ultrainit's five-phase pipeline. Each file defines the role, task scope, output expectations, and constraints for one specialist agent — from narrow gather scouts (identity, commands, git-forensics) to heavy synthesis orchestrators that consume all prior findings and produce CLAUDE.md files, skills, hooks, subagents, and MCP configs.",
+  "architecture": {
+    "overview": "14 prompt files organized around ultrainit's execution phases: 8 parallel gather agents, 1 per-module deep-dive agent, 2 optional web-research agents, and 3 synthesis orchestrators (two focused passes + one comprehensive master). Gather prompts are short (13–55 lines), read-only, and specialist; synthesizer prompts are long (101–295 lines), consume all prior findings, and produce structured multi-artifact output. Prompts are paired 1:1 with JSON schemas in schemas/ — prompts define task intent and output fields implicitly; schemas enforce types at the agent call layer in lib/agent.sh.",
+    "subdirectories": [
+      {
+        "path": "prompts/",
+        "purpose": "Flat directory — no subdirectories. All 14 prompt files co-located.",
+        "key_files": [
+          "synthesizer.md",
+          "synthesizer-tooling.md",
+          "synthesizer-docs.md",
+          "module-analyzer.md",
+          "mcp-discoverer.md",
+          "structure-scout.md",
+          "patterns.md",
+          "identity.md",
+          "commands.md",
+          "git-forensics.md",
+          "tooling.md",
+          "docs-scanner.md",
+          "security-scan.md",
+          "domain-researcher.md"
+        ]
+      }
+    ],
+    "data_flow": "Phase 1 gather agents (identity, commands, git-forensics, patterns, tooling, docs-scanner, security-scan, structure-scout) run in parallel — each reads the target codebase independently and writes a findings JSON. structure-scout's output then gates module-analyzer, which runs once per important directory it identifies. Phase 3 research agents (domain-researcher, mcp-discoverer) consume identity findings to target web searches. Phase 4 synthesis: synthesizer-docs.md runs as Pass 1 to produce CLAUDE.md files; synthesizer-tooling.md runs as Pass 2 to produce skills/hooks/subagents — both consume the full Phase 1+3 findings bundle fed to them by lib/synthesize.sh. synthesizer.md is the comprehensive master prompt that covers everything both passes do, used as the primary orchestration path."
+  },
+  "key_files": [
+    {
+      "path": "prompts/synthesizer.md",
+      "purpose": "The master synthesis orchestrator (295 lines). Consumes all 11–12 input sources (identity, commands, git-forensics, patterns, tooling, docs, security, structure, module analyses, domain research, optional MCP discovery, developer answers) and produces seven artifact types: root CLAUDE.md, subdirectory CLAUDE.md files, 10–30 skills, hooks, 3–8 subagents, MCP server configs, and settings.json hook wiring. Ends with a 19-item quality checklist.",
+      "importance": "critical"
+    },
+    {
+      "path": "prompts/synthesizer-tooling.md",
+      "purpose": "Pass 2 synthesizer (112 lines) focused exclusively on skills, hooks, subagents, MCP recommendations, and settings_hooks. Contains the stricter YAML angle-bracket warning ('NEVER use < or > — they break YAML parsing') absent from synthesizer.md. Ends with a 13-item checklist. Used when the pipeline splits docs and tooling into sequential passes.",
+      "importance": "critical"
+    },
+    {
+      "path": "prompts/synthesizer-docs.md",
+      "purpose": "Pass 1 synthesizer (101 lines) focused on root CLAUDE.md and subdirectory CLAUDE.md generation. Defines the canonical CLAUDE.md template structure (Project Overview, Architecture, Commands, Conventions, Patterns, Gotchas, MCP Servers sections) and five quality rules including 'zero generic phrases' and 'every convention references a real file'.",
+      "importance": "critical"
+    },
+    {
+      "path": "prompts/module-analyzer.md",
+      "purpose": "Deep-dive agent (54 lines) that runs once per directory identified by structure-scout. Unlike other gather agents which scan project-wide, this agent receives a specific directory path as context and produces per-module findings (purpose, key files with importance ratings, patterns, conventions, dependencies, gotchas, skill opportunities). Explicitly instructs: 'READ actual source files — don't just look at directory listings.'",
+      "importance": "critical"
+    },
+    {
+      "path": "prompts/mcp-discoverer.md",
+      "purpose": "Research agent (55 lines) that searches MCP registries (modelcontextprotocol.io, GitHub MCP org, web) to recommend 3–8 relevant MCP servers. Defines inclusion/exclusion criteria, search strategy across three sources, and exact output format including command/args/env_variables. Always recommends context7 regardless of stack.",
+      "importance": "important"
+    },
+    {
+      "path": "prompts/structure-scout.md",
+      "purpose": "Gather agent (35 lines) that maps the directory structure 3+ levels deep, classifies each directory by role (source, test, config, docs, generated, etc.), assigns priority, and decides which directories warrant their own CLAUDE.md or deep-dive analysis. Its output gates the module-analyzer phase.",
+      "importance": "important"
+    },
+    {
+      "path": "prompts/patterns.md",
+      "purpose": "Gather agent (23 lines) that identifies 8 pattern categories (design patterns, error handling, imports, naming, state management, auth, testing, config management) with mandatory file citations. Contains the strongest evidence requirement: 'MUST cite specific files as evidence. Do NOT invent patterns — only report what you can prove exists.'",
+      "importance": "important"
+    },
+    {
+      "path": "prompts/domain-researcher.md",
+      "purpose": "Research agent (32 lines) that researches domain/framework best practices using web search. Includes an explicit 'What NOT to Do' section: don't research generic programming concepts, don't provide what the AI already knows from training, don't hallucinate URLs. Uses version-specific research targets.",
+      "importance": "important"
+    },
+    {
+      "path": "prompts/identity.md",
+      "purpose": "Simplest gather agent (13 lines). Detects project name, description, primary languages with percentages, frameworks with versions, monorepo structure, deployment target, and any existing AI config files (CLAUDE.md, .cursorrules, etc.).",
+      "importance": "reference"
+    },
+    {
+      "path": "prompts/security-scan.md",
+      "purpose": "Gather agent (20 lines) that identifies files needing protection across 6 categories: secrets/credentials, migration files, lock files, generated files, CI/CD configs, and security-critical code. For each, outputs path_pattern, reason, and safe_alternative.",
+      "importance": "reference"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Evidence-Mandatory Output",
+      "description": "Every gather agent prompt requires that all findings cite real file paths as evidence. Assertions without file references are invalid. This is enforced via explicit instruction ('MUST cite specific files', 'Do NOT invent patterns') and reinforced in synthesis ('Every convention must reference a real file in the codebase'). When writing a new gather prompt, include a line requiring file citations for every claim.",
+      "example_files": [
+        "prompts/patterns.md",
+        "prompts/module-analyzer.md",
+        "prompts/synthesizer-docs.md"
+      ]
+    },
+    {
+      "name": "Portability Test as Quality Gate",
+      "description": "Synthesizers apply the Portability Test: any skill or subagent that could be dropped unchanged into an unrelated project has failed and must be revised. This guards against generic output. Applied in the final checklist of both synthesizer.md and synthesizer-tooling.md. Every skill must contain ≥3 codebase-specific file references to pass.",
+      "example_files": [
+        "prompts/synthesizer.md",
+        "prompts/synthesizer-tooling.md"
+      ]
+    },
+    {
+      "name": "Checklist-Terminated Synthesizers",
+      "description": "All three synthesizer prompts end with a checkbox checklist of quality criteria the agent must verify before returning output. synthesizer.md has 19 items; synthesizer-tooling.md has 13. Gather agents do not use checklists. This pattern makes quality criteria machine-checkable and doubles as documentation of what the validation phase (Phase 5) will inspect.",
+      "example_files": [
+        "prompts/synthesizer.md",
+        "prompts/synthesizer-tooling.md",
+        "prompts/synthesizer-docs.md"
+      ]
+    },
+    {
+      "name": "Prohibition + Alternative Pairing",
+      "description": "Every 'Do NOT do X' instruction must be paired with 'Do Y instead'. Lone prohibitions are explicitly banned in synthesizer.md: 'Never just Don't use X — always provide the alternative.' This applies to CLAUDE.md content, skills, and subagent instructions. Synthesizers are instructed to enforce this rule when generating any prohibition-containing artifact.",
+      "example_files": [
+        "prompts/synthesizer.md",
+        "prompts/synthesizer-tooling.md"
+      ]
+    },
+    {
+      "name": "Three-Source Search Strategy (Research Agents)",
+      "description": "Both research agents (domain-researcher.md and mcp-discoverer.md) define a ranked three-source search strategy: primary authoritative source → secondary curated source → general web. mcp-discoverer searches official registry first, then GitHub MCP org, then broader web. domain-researcher checks framework docs first, then community resources, then general best-practices. This prevents over-reliance on any single source.",
+      "example_files": [
+        "prompts/mcp-discoverer.md",
+        "prompts/domain-researcher.md"
+      ]
+    },
+    {
+      "name": "Implicit Schema Coupling",
+      "description": "Prompt files define output field names in prose (e.g., 'For each command: command, scope, ci_verified, source') but do not embed JSON schema inline. The actual schema enforcement lives in schemas/*.json files passed via --json-schema to the claude -p call. Prompts and schemas must stay in sync manually — there is no automated cross-validation between them.",
+      "example_files": [
+        "prompts/commands.md",
+        "prompts/tooling.md",
+        "prompts/security-scan.md"
+      ]
+    },
+    {
+      "name": "Complexity Scales with Phase",
+      "description": "Prompt length and complexity directly correlates with phase. Gather agents: 13–55 lines (narrow task, single output type). Research agents: 32–55 lines (multi-source, structured output). Synthesizers: 101–295 lines (multi-artifact, quality checklist, template structures embedded). This is intentional: gather agents run many times in parallel (cost-sensitive), synthesizers run once with maximum context (quality-sensitive).",
+      "example_files": [
+        "prompts/identity.md",
+        "prompts/structure-scout.md",
+        "prompts/synthesizer.md"
+      ]
+    }
+  ],
+  "conventions": {
+    "naming": "Kebab-case filenames matching the agent name used in lib/gather.sh, lib/research.sh, and lib/synthesize.sh (e.g., git-forensics.md maps to run_agent git-forensics). Synthesizer variants use a base name plus suffix (synthesizer.md, synthesizer-docs.md, synthesizer-tooling.md). No subdirectory hierarchy — all 14 files flat.",
+    "imports": "No imports. Prompts are pure markdown fed as --system-prompt arguments. Each prompt is self-contained with no cross-file references. Tool allowlists (--allowedTools) are configured in lib/gather.sh / lib/synthesize.sh, not in the prompts themselves.",
+    "error_handling": "Prompts do not address error recovery or partial failure — that responsibility lives entirely in lib/agent.sh (diagnose_phase_failure) and the orchestrator. domain-researcher.md is the only prompt with an explicit 'What NOT to Do' section covering failure modes (don't hallucinate URLs, don't research generic concepts). Synthesizers rely on the 19/13-item checklist to self-catch output quality failures before returning.",
+    "other": [
+      "Imperative second-person voice throughout: 'You are X. Find Y. Do NOT Z.'",
+      "CRITICAL / IMPORTANT / NEVER capitalized for high-priority constraints",
+      "Generic phrases banned by name in synthesizer.md: 'best practice', 'clean code', 'SOLID principles', 'maintainable', 'readable', 'scalable' — delete on sight",
+      "YAML angle-bracket prohibition only in synthesizer-tooling.md — absent from synthesizer.md despite the same skill YAML generation occurring there",
+      "Pass 1 / Pass 2 labels appear only in synthesizer-docs.md and synthesizer-tooling.md headers, not in synthesizer.md",
+      "Developer answers from Phase 2 (ask_developer) are referenced explicitly in synthesizer-docs.md quality rules as mandatory input — must appear in the context document",
+      "Skill trigger phrase requirement: ≥3 natural-language user phrases that activate the skill, plus ≥1 explicit Do NOT boundary"
+    ]
+  },
+  "dependencies": {
+    "internal": [
+      "schemas/ — each prompt has a paired JSON schema file enforced at the claude -p call layer",
+      "lib/agent.sh — run_agent() and run_agents_parallel() invoke prompts via --system-prompt flag",
+      "lib/gather.sh — wires gather agent prompts with tool allowlists and model assignments",
+      "lib/research.sh — wires research agent prompts with WebSearch/WebFetch tools",
+      "lib/synthesize.sh — builds the context document fed to synthesizers and invokes synthesis passes",
+      ".ultrainit/findings/ — gather agent outputs consumed by synthesizer prompts as context"
+    ],
+    "external_key": [
+      {
+        "name": "claude CLI (claude -p)",
+        "purpose": "Runtime for all prompts — each prompt is passed as --system-prompt to a claude -p invocation with --output-format json --json-schema"
+      },
+      {
+        "name": "MCP Registry API (registry.modelcontextprotocol.io)",
+        "purpose": "Primary search source referenced in mcp-discoverer.md for server discovery"
+      }
+    ]
+  },
+  "domain_terms": [
+    {
+      "term": "gather agent",
+      "meaning": "A read-only claude -p specialist that runs in Phase 1, analyzing one aspect of the codebase (identity, commands, patterns, etc.) and writing structured JSON findings."
+    },
+    {
+      "term": "research agent",
+      "meaning": "A Phase 3 claude -p agent with WebSearch/WebFetch access that augments codebase findings with external knowledge (domain best practices, MCP server registry)."
+    },
+    {
+      "term": "synthesizer",
+      "meaning": "A Phase 4 claude -p agent that consumes all prior findings and generates Claude Code artifacts (CLAUDE.md, skills, hooks, subagents). Three synthesizer prompts exist for different artifact scopes."
+    },
+    {
+      "term": "findings",
+      "meaning": "Structured JSON output from a gather or research agent, written to .ultrainit/findings/<name>.json and fed as context to synthesis passes."
+    },
+    {
+      "term": "Pass 1 / Pass 2",
+      "meaning": "Sequential synthesis sub-phases: Pass 1 (synthesizer-docs.md) generates CLAUDE.md files; Pass 2 (synthesizer-tooling.md) generates skills, hooks, and subagents. Both consume Phase 1 findings independently."
+    },
+    {
+      "term": "Portability Test",
+      "meaning": "Quality gate applied to skills and subagents: if the artifact could be dropped unchanged into an unrelated project, it fails and must be revised to include codebase-specific references."
+    },
+    {
+      "term": "structure-scout",
+      "meaning": "The gather agent that maps directory structure and identifies which directories warrant deep-dive analysis via module-analyzer — it gates Phase 1 Stage 2."
+    },
+    {
+      "term": "module-analyzer",
+      "meaning": "A gather agent that runs once per directory identified by structure-scout, performing deep analysis of that specific module's purpose, patterns, and gotchas."
+    },
+    {
+      "term": "skill",
+      "meaning": "A Claude Code artifact (markdown with YAML frontmatter) that activates on specific user phrases and provides codebase-specific guidance for a recurring workflow. Skills require ≥3 trigger phrases, ≥1 Do NOT boundary, and ≥3 file references."
+    },
+    {
+      "term": "hook",
+      "meaning": "A bash script triggered by Claude Code events (pre-tool-use, post-tool-use, etc.) that enforces rules or runs tooling. Must use set -euo pipefail, read JSON from stdin, and exit 2 to block."
+    }
+  ],
+  "gotchas": [
+    {
+      "issue": "YAML angle-bracket prohibition is only documented in synthesizer-tooling.md, not in synthesizer.md — even though synthesizer.md also generates skill YAML with frontmatter.",
+      "solution": "When editing skill generation instructions in synthesizer.md, add the explicit warning: 'NEVER use angle brackets (< or >) in YAML frontmatter or description fields — they break YAML parsing. Use plain English or quotes instead.'"
+    },
+    {
+      "issue": "Prompts define output field names in prose, but the enforcing JSON schema lives separately in schemas/. The two can drift silently — a prompt can describe a field that the schema doesn't declare, causing structured output to drop it.",
+      "solution": "When modifying a prompt's output section, always update the paired schema file in schemas/ in the same commit. There is no automated cross-validation."
+    },
+    {
+      "issue": "module-analyzer.md receives a specific directory path as input context, but the prompt itself doesn't describe how that context arrives — it's injected by lib/gather.sh at call time via the prompt argument, not via a system prompt variable.",
+      "solution": "If refactoring how module-analyzer is invoked, the directory path must be interpolated into the prompt string before the claude -p call, not passed as a separate flag."
+    },
+    {
+      "issue": "Three synthesizer prompts (synthesizer.md, synthesizer-docs.md, synthesizer-tooling.md) overlap in scope. synthesizer.md is comprehensive but synthesizer-docs.md and synthesizer-tooling.md are used for the actual two-pass pipeline. Using synthesizer.md as a drop-in replacement for both passes would skip the Pass 1/Pass 2 sequencing.",
+      "solution": "synthesizer.md is the reference/master prompt; the actual pipeline uses synthesizer-docs.md (Pass 1) then synthesizer-tooling.md (Pass 2). Do not conflate them."
+    },
+    {
+      "issue": "Research agents (domain-researcher, mcp-discoverer) are optional (--skip-research flag) but synthesizer.md references their outputs as 'optional'. If research findings are absent, the synthesizers must gracefully handle missing fields — but prompts do not explicitly instruct the agent to handle missing inputs.",
+      "solution": "When testing synthesizers without research findings, verify that the context document passed by lib/synthesize.sh omits those sections cleanly rather than passing empty JSON, which could confuse the agent."
+    },
+    {
+      "issue": "Developer answers from Phase 2 (ask_developer) are marked mandatory in synthesizer-docs.md quality rules, but with --non-interactive flag the Phase 2 step is skipped and developer-answers.json may not exist.",
+      "solution": "lib/synthesize.sh must handle missing developer-answers.json gracefully and either omit that section from the context document or supply a placeholder. The synthesizer prompt should not assume the field is always present."
+    },
+    {
+      "issue": "Gather agent prompts contain no instructions about what to do if a file is unreadable, a git command fails, or a config file is malformed. Agents may hallucinate findings or return partial output silently.",
+      "solution": "Agent failures are caught by lib/agent.sh via exit code and stderr inspection, not by the prompts. Treat suspicious findings (e.g., frameworks with no version, patterns with no file citations) as potential hallucinations and verify before using in synthesis."
+    }
+  ],
+  "commands": [
+    {
+      "command": "ls -la prompts/",
+      "purpose": "List all prompt files with sizes to audit coverage"
+    },
+    {
+      "command": "wc -l prompts/*.md | sort -n",
+      "purpose": "Rank prompts by line count to understand complexity distribution"
+    },
+    {
+      "command": "grep -n 'CRITICAL\\|IMPORTANT\\|NEVER\\|Do NOT' prompts/*.md",
+      "purpose": "Audit all high-priority constraints across all prompts"
+    },
+    {
+      "command": "grep -n 'angle bracket\\|< or >' prompts/*.md",
+      "purpose": "Find where the YAML angle-bracket warning appears (currently only synthesizer-tooling.md)"
+    },
+    {
+      "command": "grep -rn 'generic\\|best practice\\|clean code' prompts/*.md",
+      "purpose": "Check for banned generic phrases leaking into the prompts themselves"
+    },
+    {
+      "command": "diff prompts/synthesizer-docs.md prompts/synthesizer-tooling.md",
+      "purpose": "Compare Pass 1 and Pass 2 synthesizer structure for divergence"
+    },
+    {
+      "command": "grep -n 'checklist\\|\\- \\[' prompts/synthesizer.md prompts/synthesizer-tooling.md",
+      "purpose": "Inspect quality checklist items in synthesizers"
+    }
+  ],
+  "skill_opportunities": [
+    {
+      "name": "add-gather-agent",
+      "description": "Scaffold a new gather agent: create the prompt file in prompts/, the JSON schema in schemas/, add the run_agent call in lib/gather.sh with correct tool allowlist and model, add a fixture in tests/fixtures/findings/, and wire up a bats test in tests/unit/.",
+      "workflow_steps": [
+        "Create prompts/<agent-name>.md following the gather agent anatomy (role statement, numbered source list, 'for each' output fields, evidence requirement)",
+        "Create schemas/<agent-name>.json with typed fields matching the prompt's output description",
+        "Add run_agent call in lib/gather.sh inside run_agents_parallel with appropriate --allowedTools and model",
+        "Add get_failed_agents check for the new agent name",
+        "Create tests/fixtures/findings/<agent-name>.json with realistic fixture data",
+        "Add bats test in tests/unit/ verifying the agent is called and findings written"
+      ]
+    },
+    {
+      "name": "audit-prompt-schema-sync",
+      "description": "Cross-validate that every field described in a prompt's output section exists in the paired JSON schema, and flag any drift. Useful after modifying either a prompt or its schema.",
+      "workflow_steps": [
+        "Read each prompts/*.md and extract implied output field names from 'For each X: field1, field2' sections",
+        "Read each schemas/*.json and extract declared property names",
+        "Diff the two sets and report fields present in prompt but absent from schema (or vice versa)",
+        "Flag any mismatches for manual review"
+      ]
+    },
+    {
+      "name": "synthesizer-quality-check",
+      "description": "Run the synthesizer's own 19-item checklist against a synthesis output file to verify it passes all quality gates before writing to disk. Useful during development of new synthesizer prompt variants.",
+      "workflow_steps": [
+        "Extract checklist items from prompts/synthesizer.md and prompts/synthesizer-tooling.md",
+        "Read a .ultrainit/synthesis/output.json file",
+        "For each checklist item, apply the corresponding validation rule (min skill count, no angle brackets, ≥3 file refs, etc.)",
+        "Report pass/fail per item with the specific offending artifact identified"
+      ]
+    }
+  ]
+}

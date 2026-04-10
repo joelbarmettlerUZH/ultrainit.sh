@@ -1,0 +1,59 @@
+{
+  "recommended_servers": [
+    {
+      "name": "context7",
+      "package": "@upstash/context7-mcp",
+      "description": "Up-to-date code docs for any prompt — fetches version-specific documentation and examples from official sources",
+      "relevance": "Useful when working with bats-core, jq, and other shell tooling used throughout the project. Keeps docs current without relying on training data cutoffs.",
+      "configuration": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@upstash/context7-mcp"
+        ]
+      }
+    },
+    {
+      "name": "github",
+      "package": "@smithery-ai/github",
+      "description": "Access the GitHub API — file operations, repository management, issue/PR management, search",
+      "relevance": "ultrainit is distributed via GitHub Releases and uses GitHub Actions for CI/CD. This server enables managing releases, PRs, issues, and the GHCR container registry directly from Claude.",
+      "configuration": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@smithery-ai/github"
+        ],
+        "env": {
+          "GITHUB_TOKEN": "YOUR_GITHUB_TOKEN"
+        }
+      }
+    },
+    {
+      "name": "docker",
+      "package": "@paretools/docker",
+      "description": "Structured Docker operations (ps, images, logs, build, compose) as typed JSON",
+      "relevance": "ultrainit uses Docker (Dockerfile.test) to run the bats-core test suite in isolation. This server lets Claude manage the test image builds, inspect running containers, and tail test logs.",
+      "configuration": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@paretools/docker"
+        ]
+      }
+    },
+    {
+      "name": "shell-exec",
+      "package": "shell-exec-mcp",
+      "description": "Execute bash commands with background job support",
+      "relevance": "The entire ultrainit project is bash — running the test suite (make test-all), validating scripts (scripts/validate-skill.sh), and exercising the CLI directly all require shell execution. Useful for quick iteration without leaving the editor.",
+      "configuration": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "shell-exec-mcp"
+        ]
+      }
+    }
+  ]
+}

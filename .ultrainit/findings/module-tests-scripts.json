@@ -1,0 +1,318 @@
+{
+  "module_path": "tests/scripts/",
+  "purpose": "BATS test suites for the two standalone validator scripts — `scripts/validate-skill.sh` and `scripts/validate-subagent.sh`. These tests verify the structural, frontmatter, content-quality, and codebase-specificity checks that Phase 5 of ultrainit runs on every generated skill and subagent before writing artifacts. They run inside Docker with a full mock environment and no real Claude API calls.",
+  "architecture": {
+    "overview": "Two BATS test files, each covering one validator script. Both delegate setup/teardown to a shared helper library (`tests/helpers/test_helper.bash`) that creates an isolated tmpdir, exports all required environment variables, and sources all eight project libs at once. Fixture data comes from either pre-built YAML files in `tests/fixtures/` or inline heredocs that dynamically construct edge-case inputs. The mock_claude.bash helper exists in the same helpers directory but is NOT used by these tests — the validators are pure shell scripts that never call Claude, so no mock is needed.",
+    "subdirectories": [
+      {
+        "path": "tests/scripts/",
+        "purpose": "The two .bats test suites: one for validate-skill.sh (21 tests) and one for validate-subagent.sh (6 tests).",
+        "key_files": [
+          "tests/scripts/validate_skill.bats",
+          "tests/scripts/validate_subagent.bats"
+        ]
+      },
+      {
+        "path": "tests/helpers/",
+        "purpose": "Shared infrastructure loaded by every test suite: _common_setup/_common_teardown, make_claude_envelope, and the PATH-mock for Claude.",
+        "key_files": [
+          "tests/helpers/test_helper.bash",
+          "tests/helpers/mock_claude.bash"
+        ]
+      },
+      {
+        "path": "tests/fixtures/skills/",
+        "purpose": "Pre-built SKILL.md fixtures: one valid, two invalid (missing description, angle brackets in description).",
+        "key_files": [
+          "tests/fixtures/skills/valid-skill/SKILL.md",
+          "tests/fixtures/skills/invalid-skill-no-desc/SKILL.md",
+          "tests/fixtures/skills/invalid-skill-angle-brackets/SKILL.md"
+        ]
+      },
+      {
+        "path": "tests/fixtures/subagents/",
+        "purpose": "Pre-built subagent fixtures: one valid (code-reviewer.md), one invalid (no frontmatter).",
+        "key_files": [
+          "tests/fixtures/subagents/valid-subagent.md",
+          "tests/fixtures/subagents/invalid-subagent.md"
+        ]
+      },
+      {
+        "path": "scripts/",
+        "purpose": "The scripts under test. Both validators are standalone shell scripts that accept a file path, run multi-stage checks, and exit 0 (pass/warnings) or 1 (fail).",
+        "key_files": [
+          "scripts/validate-skill.sh",
+          "scripts/validate-subagent.sh"
+        ]
+      }
+    ],
+    "data_flow": "Each test calls `run bash scripts/validate-skill.sh <path>` or the subagent equivalent. The validator reads the target file, extracts YAML frontmatter with awk/grep/sed, applies validation rules, accumulates error/warning counts, prints a structured report to stdout, and exits. BATS captures stdout into `$output` and the exit code into `$status`. Tests then assert on `$status` (via `assert_success`/`assert_failure`) and on partial strings in `$output` (via `assert_output --partial`). No mocking is needed because the validators are pure text processors."
+  },
+  "key_files": [
+    {
+      "path": "tests/scripts/validate_skill.bats",
+      "purpose": "21 test cases for scripts/validate-skill.sh covering: valid pass, missing/malformed frontmatter, missing description, angle brackets in description, uppercase folder name (non-kebab-case), fewer than 3 path references, description over 1024 chars, generic phrases warning, missing verification section, YAML folded/literal scalar description formats, root-level and tests/ directory references, and nonexistent file.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/scripts/validate_subagent.bats",
+      "purpose": "6 test cases for scripts/validate-subagent.sh covering: valid pass, missing frontmatter, nonexistent file, missing name field, and uppercase filename warning.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/helpers/test_helper.bash",
+      "purpose": "Shared setup/teardown for all test suites. Loads bats-support, bats-assert, bats-file from /usr/local/lib. Sets TEST_TMPDIR, WORK_DIR, TARGET_DIR, all budget variables, all flag variables, and color codes to empty strings. Sources all 8 project libs in dependency order so interactions (e.g. nullglob set by one lib) are caught during testing.",
+      "importance": "critical"
+    },
+    {
+      "path": "scripts/validate-skill.sh",
+      "purpose": "The validator under test. Accepts a SKILL.md path. Runs 4 check categories: structural (filename, folder kebab-case, frontmatter delimiters), frontmatter fields (name, description length/content/trigger/scope/angle-brackets), content quality (path reference count ≥ 3, verification section, generic phrase count), and outputs VERDICT: PASS / NEEDS REVISION / FAIL.",
+      "importance": "critical"
+    },
+    {
+      "path": "scripts/validate-subagent.sh",
+      "purpose": "The validator under test. Accepts a .md path. Checks: file extension, filename casing, frontmatter delimiters, required name/description fields, description trigger and scope phrases, body word count ≥ 20, optional model/bypassPermissions/tools fields, path reference count, generic phrase count, and overlap with built-in Explore agent.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/helpers/mock_claude.bash",
+      "purpose": "PATH-based mock for the claude CLI used by integration tests. Not used in tests/scripts/ (validators never call Claude), but present in helpers because it's shared across all suites.",
+      "importance": "reference"
+    },
+    {
+      "path": "tests/fixtures/skills/valid-skill/SKILL.md",
+      "purpose": "Golden fixture that must pass all 21 validator checks. Defines what a correct SKILL.md looks like: kebab-case folder, inline description with trigger and negative scope, 5+ backtick-wrapped path references, a verification section.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/fixtures/subagents/valid-subagent.md",
+      "purpose": "Golden fixture for subagent validation. name: code-reviewer, model: sonnet, tools: Read/Glob/Grep/Bash(git:*), body with review checklist referencing 6 codebase paths.",
+      "importance": "important"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Fixture-or-Heredoc test data",
+      "description": "Tests that verify a documented behavior use pre-built fixtures from tests/fixtures/. Tests that probe edge cases (long description, generic phrases, missing fields) generate their own SKILL.md or .md files inline with heredocs into $TEST_TMPDIR. The rule: if the fixture would be reused or serves as a canonical example, commit it; if it's a one-off edge case, build it inline. This keeps fixtures/*.md readable and authoritative while keeping test files self-contained for edge cases.",
+      "example_files": [
+        "tests/scripts/validate_skill.bats",
+        "tests/fixtures/skills/valid-skill/SKILL.md"
+      ]
+    },
+    {
+      "name": "run + assert_success/assert_failure + assert_output --partial",
+      "description": "Every test follows the same three-step structure: (1) `run bash scripts/validate-X.sh <path>` to capture stdout and exit code, (2) `assert_success` or `assert_failure` to check exit code, (3) one or more `assert_output --partial 'expected text'` to verify specific messages appear in output. The validators always print to stdout (not stderr), so $output contains the full report. Never use assert_output alone (exact match) — always use --partial because the report contains dynamic counts and metrics.",
+      "example_files": [
+        "tests/scripts/validate_skill.bats",
+        "tests/scripts/validate_subagent.bats"
+      ]
+    },
+    {
+      "name": "Folder-as-namespace for skill fixtures",
+      "description": "validate-skill.sh requires the input to be named exactly SKILL.md, and it derives the skill's name from the containing folder. So fixtures must be placed in named subdirectories: tests/fixtures/skills/valid-skill/SKILL.md, tests/fixtures/skills/invalid-skill-no-desc/SKILL.md. Dynamic tests create $TEST_TMPDIR/MySkill/SKILL.md or $TEST_TMPDIR/my-skill/SKILL.md to test folder-name validation. The folder name IS the skill name — a flat file is invalid.",
+      "example_files": [
+        "tests/scripts/validate_skill.bats",
+        "scripts/validate-skill.sh"
+      ]
+    },
+    {
+      "name": "Multi-line YAML description coverage",
+      "description": "The synthesizer agent may emit descriptions as YAML folded scalars (`description: >`) or literal scalars (`description: |`) rather than inline strings. validate-skill.sh contains special parsing for both formats. The test suite has dedicated cases for each format to prevent regressions where multi-line descriptions falsely fail the 'missing description' check. These tests are the only signal that the YAML multi-line parsing works correctly.",
+      "example_files": [
+        "tests/scripts/validate_skill.bats",
+        "scripts/validate-skill.sh"
+      ]
+    },
+    {
+      "name": "Sourcing all libs in _common_setup",
+      "description": "test_helper.bash sources all 8 project libs (utils, config, agent, gather, ask, research, synthesize, validate, merge) in every setup() call, even for tests that only need validate.sh. This is intentional: it detects cross-lib interactions like one lib setting bash options (nullglob, errexit) that silently break another. The cost is slower setup; the benefit is that integration-level breakage surfaces in unit tests.",
+      "example_files": [
+        "tests/helpers/test_helper.bash"
+      ]
+    },
+    {
+      "name": "Threshold-based VERDICT",
+      "description": "Both validators use a two-tier exit: exit 1 if errors > 0 OR warnings > threshold (3 for skills, 4 for subagents); exit 0 otherwise. This means a skill with 4 warnings gets 'NEEDS REVISION' but still exits 1 (blocking). Tests verify specific error messages rather than just exit codes to confirm the right rule triggered. The thresholds differ between scripts, so a test passing for skills may not apply to subagents.",
+      "example_files": [
+        "scripts/validate-skill.sh",
+        "scripts/validate-subagent.sh"
+      ]
+    }
+  ],
+  "conventions": {
+    "naming": "Test files use snake_case matching the script under test: validate-skill.sh → validate_skill.bats, validate-subagent.sh → validate_subagent.bats. Fixture directories for skills use kebab-case folder names (valid-skill, invalid-skill-no-desc) because the validator enforces kebab-case on the folder name — so the fixtures themselves must comply. Subagent fixtures are flat .md files (valid-subagent.md, invalid-subagent.md).",
+    "imports": "Each .bats file loads only `../helpers/test_helper` — a single relative path. test_helper.bash then loads all bats libraries from absolute /usr/local/lib paths (Docker-installed). No relative paths to bats libraries.",
+    "error_handling": "The validators exit 1 on any error (missing file, missing frontmatter) and print an ERROR: prefixed line before exiting. Tests assert_failure and assert_output --partial 'ERROR' for these cases. Warnings use a 'WARNING:' prefix and do NOT immediately exit — they accumulate toward the warning threshold. Tests for warnings use assert_success (exit 0) + assert_output --partial for the warning text.",
+    "other": [
+      "Color codes are set to empty strings in test_helper.bash so validator output is plain text — prevents ANSI escape codes from breaking assert_output --partial matching.",
+      "Dynamic test fixtures always write to $TEST_TMPDIR subdirectories, never to PROJECT_ROOT or SCRIPT_DIR — teardown cleans up TEST_TMPDIR only.",
+      "Tests use single-quoted heredocs (<<'EOF') to prevent variable expansion in fixture content, which is critical when fixture YAML contains $ or backtick characters.",
+      "The VERDICT line is always the last line of validator output: 'VERDICT: PASS', 'VERDICT: FAIL', or 'VERDICT: NEEDS REVISION' — tests can reliably assert_output --partial 'VERDICT: PASS' without worrying about line ordering."
+    ]
+  },
+  "dependencies": {
+    "internal": [
+      "scripts/validate-skill.sh (subject under test for validate_skill.bats)",
+      "scripts/validate-subagent.sh (subject under test for validate_subagent.bats)",
+      "tests/helpers/test_helper.bash (shared setup infrastructure)",
+      "tests/helpers/mock_claude.bash (shared mock, not used here but co-located)",
+      "tests/fixtures/skills/* (pre-built SKILL.md fixtures)",
+      "tests/fixtures/subagents/* (pre-built subagent .md fixtures)",
+      "lib/*.sh (all 8 project libs sourced in _common_setup)"
+    ],
+    "external_key": [
+      {
+        "name": "bats-core",
+        "purpose": "Test runner — executes .bats files, provides @test blocks, run helper, $status/$output variables"
+      },
+      {
+        "name": "bats-support",
+        "purpose": "Output formatting for assertion failures — loaded from /usr/local/lib/bats-support/load"
+      },
+      {
+        "name": "bats-assert",
+        "purpose": "Assertion helpers: assert_success, assert_failure, assert_output --partial — loaded from /usr/local/lib/bats-assert/load"
+      },
+      {
+        "name": "bats-file",
+        "purpose": "File assertion helpers (assert_file_exists etc.) — loaded from /usr/local/lib/bats-file/load, available but not heavily used in scripts/ tests"
+      },
+      {
+        "name": "Docker (Dockerfile.test)",
+        "purpose": "Provides the isolated environment where bats and all /usr/local/lib dependencies are pre-installed. Tests are not expected to run outside the container."
+      },
+      {
+        "name": "awk, grep, sed",
+        "purpose": "Used inside the validator scripts themselves for YAML frontmatter parsing — not test dependencies, but required on the host where validators run"
+      }
+    ]
+  },
+  "domain_terms": [
+    {
+      "term": "SKILL.md",
+      "meaning": "The specific filename the skill validator requires. The containing folder name becomes the skill's canonical name. A skill is a Claude Code prompt-fragment that fires on user-invocable slash commands."
+    },
+    {
+      "term": "frontmatter",
+      "meaning": "YAML block delimited by --- lines at the top of a markdown file. Contains name, description, and optionally model/tools/bypassPermissions fields. validate-skill.sh and validate-subagent.sh parse this with awk to find the closing ---."
+    },
+    {
+      "term": "VERDICT",
+      "meaning": "The final line of validator output: PASS (exit 0, errors=0, warnings≤threshold), NEEDS REVISION (exit 1, warnings>threshold but errors=0), or FAIL (exit 1, errors>0)."
+    },
+    {
+      "term": "path reference",
+      "meaning": "A backtick-wrapped filename or a recognized directory prefix (src/, tests/, lib/, etc.) in the skill/subagent body. Both validators require ≥3 such references to prove the artifact is codebase-specific rather than generic."
+    },
+    {
+      "term": "trigger phrase",
+      "meaning": "A phrase in the description that tells Claude when to invoke the skill/agent: 'use when', 'use for', 'trigger', or 'invoke'. Required field — missing it means Claude won't know the invocation condition."
+    },
+    {
+      "term": "negative scope",
+      "meaning": "A phrase in the description that tells Claude when NOT to use the skill/agent: 'do not use', 'don't use', 'not for', 'instead use', 'do not trigger'. Required to prevent over-triggering."
+    },
+    {
+      "term": "folded scalar / literal scalar",
+      "meaning": "YAML multi-line string formats: `description: >` (folded, newlines become spaces) and `description: |` (literal, newlines preserved). The validator must parse both to correctly extract multi-line descriptions."
+    },
+    {
+      "term": "kebab-case",
+      "meaning": "Naming convention enforced on skill folder names and subagent filenames: all lowercase, words separated by hyphens, no underscores or spaces. Folder name becomes the skill's name field."
+    },
+    {
+      "term": "dispatch mode",
+      "meaning": "mock_claude.bash mode where different agents get different mock responses based on schema filename or prompt content. Uses MOCK_CLAUDE_DISPATCH_DIR. Not used in tests/scripts/ but relevant to integration tests."
+    },
+    {
+      "term": "bypassPermissions",
+      "meaning": "A subagent frontmatter field that grants the agent unrestricted tool access. validate-subagent.sh warns if present because it requires deliberate sandboxing justification."
+    }
+  ],
+  "gotchas": [
+    {
+      "issue": "mock_claude.bash is loaded in test_helper.bash's _common_setup but the mock binary is NOT automatically activated — you must explicitly call setup_mock_claude() in tests that need it. The scripts/ tests never call it because validators don't invoke claude. Forgetting this in a new integration test will cause real claude invocations.",
+      "solution": "Call setup_mock_claude() inside the test's setup() function (or at the start of the @test block) whenever the code under test calls claude -p. Check whether the code path hits claude before deciding."
+    },
+    {
+      "issue": "validate-skill.sh derives the skill name from the parent folder of SKILL.md, not from the name: field in frontmatter. A dynamic test that creates $TEST_TMPDIR/SKILL.md (no subdirectory) will fail the folder-name check because the folder is the tmpdir hash.",
+      "solution": "Always create SKILL.md inside a named subdirectory: mkdir -p $TEST_TMPDIR/my-skill && cat > $TEST_TMPDIR/my-skill/SKILL.md."
+    },
+    {
+      "issue": "The warning threshold differs between the two validators: skills fail if warnings > 3, subagents fail if warnings > 4. A test that expects assert_success may pass for subagents but fail for skills with the same fixture content.",
+      "solution": "Check the VERDICT and threshold logic in the specific validator before writing threshold-boundary tests. Don't assume both scripts share the same numeric threshold."
+    },
+    {
+      "issue": "assert_output without --partial does an exact full-output match. Validator output includes dynamic metrics (word count, token estimate, path reference count) that vary by fixture content. Using assert_output 'VERDICT: PASS' will almost always fail.",
+      "solution": "Always use assert_output --partial 'VERDICT: PASS' (or whatever substring you're checking). Never use exact-match assert_output in these tests."
+    },
+    {
+      "issue": "test_helper.bash sources all 8 lib/*.sh files on every setup(). If any lib file has a syntax error or sets a global bash option that breaks parsing (e.g. set -u exposed by an unset variable), all tests in the suite will fail at setup — not at the assertion — making the root cause hard to diagnose.",
+      "solution": "When a test suite fails at setup with a cryptic error, temporarily add 'set -x' to _common_setup and re-run to see which lib sourcing fails. Fix the lib, not the test."
+    },
+    {
+      "issue": "The path-reference regex in validate-skill.sh matches backtick-wrapped content and specific directory prefixes. A skill body with file references using bold (**file.py**) or italic (*file.py*) formatting will NOT be counted — only backtick format (`file.py`) and recognized directory names match.",
+      "solution": "Always use backtick formatting for file and path references in SKILL.md bodies. Fixtures and tests that verify the reference count must use backtick format."
+    },
+    {
+      "issue": "The tests/scripts/ suite has significantly fewer tests for validate-subagent.sh (6) than validate-skill.sh (21). Many subagent-specific checks (model field validation, bypassPermissions warning, tool-scope mismatch, overlap with built-in Explore agent) have no corresponding tests.",
+      "solution": "When adding new validation logic to validate-subagent.sh, add a corresponding test in validate_subagent.bats. The current low coverage means changes to the subagent validator could silently regress."
+    }
+  ],
+  "commands": [
+    {
+      "command": "make test-scripts",
+      "purpose": "Run only tests/scripts/ suite inside Docker"
+    },
+    {
+      "command": "make test-all",
+      "purpose": "Run all bats suites (unit, scripts, integration, edge) inside Docker"
+    },
+    {
+      "command": "make test-image",
+      "purpose": "Build the Docker test image locally (one-time, required before running tests)"
+    },
+    {
+      "command": "docker run --rm -v $(pwd):/workspace ghcr.io/joelbarmettleruzh/ultrainit-test:latest bats tests/scripts/validate_skill.bats",
+      "purpose": "Run just the skill validator tests directly in Docker"
+    },
+    {
+      "command": "docker run --rm -v $(pwd):/workspace ghcr.io/joelbarmettleruzh/ultrainit-test:latest bats tests/scripts/validate_subagent.bats",
+      "purpose": "Run just the subagent validator tests directly in Docker"
+    },
+    {
+      "command": "bash scripts/validate-skill.sh tests/fixtures/skills/valid-skill/SKILL.md",
+      "purpose": "Manually invoke the skill validator against the golden fixture"
+    },
+    {
+      "command": "bash scripts/validate-subagent.sh tests/fixtures/subagents/valid-subagent.md",
+      "purpose": "Manually invoke the subagent validator against the golden fixture"
+    }
+  ],
+  "skill_opportunities": [
+    {
+      "name": "add-validator-test",
+      "description": "Scaffold a new @test block in validate_skill.bats or validate_subagent.bats for a given validation rule, including the correct heredoc fixture pattern, assert_success/assert_failure call, and assert_output --partial assertion.",
+      "workflow_steps": [
+        "Identify which validator and which rule is being tested",
+        "Determine if the fixture should be a static file in tests/fixtures/ or a dynamic heredoc",
+        "Create the fixture with proper SKILL.md folder structure or flat .md file",
+        "Write @test block using run bash scripts/validate-X.sh <path>",
+        "Add assert_success or assert_failure",
+        "Add assert_output --partial for the specific error/warning message text",
+        "Run make test-scripts to verify"
+      ]
+    },
+    {
+      "name": "expand-subagent-coverage",
+      "description": "Add missing test cases to validate_subagent.bats for the currently untested checks: model field validation, bypassPermissions warning, tool-scope mismatch detection, and overlap-with-Explore-agent warning.",
+      "workflow_steps": [
+        "Read scripts/validate-subagent.sh lines 98-170 to identify untested rules",
+        "For each untested rule, create a minimal heredoc fixture that triggers it",
+        "Write the @test block with assert_failure or assert_success plus assert_output --partial",
+        "Run make test-scripts to confirm each new test catches the intended behavior",
+        "Confirm no existing tests break"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,357 @@
+{
+  "module_path": "tests/",
+  "purpose": "bats-core test suite for ultrainit.sh — a shell-native Claude Code configuration generator. Covers unit tests for every lib function, integration tests for multi-agent phases, edge cases for malformed inputs and budget exhaustion, and standalone script validation tests. All Claude CLI calls are intercepted by a PATH-based mock binary; no real API calls are made during testing.",
+  "architecture": {
+    "overview": "The suite is organized into five layers: helpers (shared infrastructure), unit (pure function tests), integration (phase-level pipeline tests), scripts (standalone validator script tests), and edge (boundary/robustness tests). A sixth directory, smoke/, contains a minimal sample project used for real end-to-end runs. All test files are bats-core .bats files. Setup is centralized in test_helper.bash, which sources all 8 lib files together in each test to catch cross-lib interactions (e.g., nullglob in synthesize.sh escaping into config.sh). The mock_claude.bash helper installs a fake claude binary on PATH that supports single-response mode, multi-agent dispatch mode, and controlled exit-code injection.",
+    "subdirectories": [
+      {
+        "path": "tests/helpers/",
+        "purpose": "Shared test infrastructure: environment setup/teardown, lib loading, fixture copying, JSON envelope construction, and the mock Claude binary system.",
+        "key_files": [
+          "tests/helpers/test_helper.bash",
+          "tests/helpers/mock_claude.bash"
+        ]
+      },
+      {
+        "path": "tests/unit/",
+        "purpose": "Tests for individual pure functions across all lib files. Each .bats file maps roughly to one lib module. 11 files covering utilities, budget, config, agent invocation, parallelism, synthesis, merge, and validation helpers.",
+        "key_files": [
+          "tests/unit/agent_run.bats",
+          "tests/unit/config_budget.bats",
+          "tests/unit/merge.bats",
+          "tests/unit/synthesize_helpers.bats",
+          "tests/unit/validate_claude_md.bats",
+          "tests/unit/validate_hook.bats",
+          "tests/unit/agent_prompt_file.bats"
+        ]
+      },
+      {
+        "path": "tests/integration/",
+        "purpose": "Phase-level tests that exercise full orchestration flows: the gather phase (all 8 agents in parallel with failure tolerance), the synthesis phase (two-pass pipeline), and resumability across agent and phase boundaries.",
+        "key_files": [
+          "tests/integration/gather_phase.bats",
+          "tests/integration/synthesize_phase.bats",
+          "tests/integration/resume.bats"
+        ]
+      },
+      {
+        "path": "tests/scripts/",
+        "purpose": "Tests for standalone bash scripts (validate-skill.sh, validate-subagent.sh) that run as external processes. Tests frontmatter parsing, filename casing, path reference counting, description length, generic phrase detection, and YAML format variants.",
+        "key_files": [
+          "tests/scripts/validate_skill.bats",
+          "tests/scripts/validate_subagent.bats"
+        ]
+      },
+      {
+        "path": "tests/edge/",
+        "purpose": "Boundary and robustness tests: budget exhaustion mid-run, corrupt state.json, malformed cost files, null/empty JSON synthesis output, special characters in prompts and paths, CLI argument parsing, nullglob interaction regressions, and known regex bugs documented as tests.",
+        "key_files": [
+          "tests/edge/corrupt_state.bats",
+          "tests/edge/special_characters.bats",
+          "tests/edge/validation_regex.bats",
+          "tests/edge/budget_exhaustion.bats",
+          "tests/edge/empty_json.bats"
+        ]
+      },
+      {
+        "path": "tests/fixtures/",
+        "purpose": "Realistic JSON data representing outputs from all 8 gather agents, both synthesis passes, developer answers, and sample skill/subagent markdown files for validation testing.",
+        "key_files": [
+          "tests/fixtures/findings/identity.json",
+          "tests/fixtures/synthesis/output.json",
+          "tests/fixtures/developer-answers.json",
+          "tests/fixtures/skills/valid-skill/SKILL.md"
+        ]
+      },
+      {
+        "path": "tests/smoke/",
+        "purpose": "A minimal sample project used as a target for real (non-mocked) end-to-end runs of ultrainit.sh."
+      }
+    ],
+    "data_flow": "Each test: (1) _common_setup() creates an isolated tmpdir tree mirroring the real .ultrainit/ layout and sources all 8 libs, (2) setup_mock_claude() prepends a fake claude binary to PATH, (3) the test sets MOCK_CLAUDE_RESPONSE or MOCK_CLAUDE_DISPATCH_DIR pointing to fixture JSON files, (4) the test calls the function under test (which internally calls the mock claude), (5) assertions check filesystem state (findings files, cost files, state.json), stdout/stderr, and exit codes. MOCK_CLAUDE_LOG records all invocations for assertion. make_claude_envelope() wraps fixture JSON in the {is_error, total_cost_usd, structured_output} envelope that real claude --output-format json returns."
+  },
+  "key_files": [
+    {
+      "path": "tests/helpers/test_helper.bash",
+      "purpose": "Central setup/teardown: creates full .ultrainit/ directory tree, sources all 8 lib files together (catches cross-lib shell option side-effects), sets all env vars, provides use_fixture() and make_claude_envelope() helpers.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/helpers/mock_claude.bash",
+      "purpose": "Installs a fake claude binary on PATH supporting single-response mode (MOCK_CLAUDE_RESPONSE), per-agent dispatch mode (MOCK_CLAUDE_DISPATCH_DIR), exit-code injection (MOCK_CLAUDE_EXIT_CODE), and call logging (MOCK_CLAUDE_LOG). Handles 'claude auth status' specially.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/unit/agent_run.bats",
+      "purpose": "Tests the core run_agent() function: success path with cost extraction, resumability (skip/force), failure modes (bad exit code, is_error=true, non-object output, missing schema), budget enforcement, and large-prompt stdin routing (>100KB uses '-p -').",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/unit/agent_prompt_file.bats",
+      "purpose": "Tests @file prompt syntax and special-character survival (apostrophes, parens, backticks, dollar signs must NOT expand through shell). Regression suite for the shell-escaping fixes in PR #2.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/unit/config_budget.bats",
+      "purpose": "Tests compute_budgets (50/10/30/10 phase split), set_agent_budget (per-agent division), check_budget (spend vs. limit), get_remaining_budget, and check_budget_sanity (model-appropriate minimums).",
+      "importance": "important"
+    },
+    {
+      "path": "tests/unit/validate_claude_md.bats",
+      "purpose": "Tests CLAUDE.md validation: minimum content length, generic phrase rejection, code block requirement, and prohibition-must-have-alternative rule.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/unit/validate_hook.bats",
+      "purpose": "Tests hook script validation (shebang, set -euo pipefail, stdin reading) and settings.json wiring count matching.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/unit/merge.bats",
+      "purpose": "Tests artifact writing: settings.json deep-merge (hooks concatenated, not overwritten), mcp.json creation, backup_existing, DRY_RUN mode, and skip-existing-skills behavior.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/integration/gather_phase.bats",
+      "purpose": "Tests the full 8-agent gather phase: all agents run in parallel, critical-agent failure aborts (identity, structure-scout), 1-2 non-critical failures tolerated, systemic failure (3+) aborts, and resumability.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/edge/corrupt_state.bats",
+      "purpose": "Documents and tests robustness against corrupt state.json, malformed cost files (no pipes, non-numeric), empty cost dirs, and the nullglob regression where synthesize.sh's 'shopt -s nullglob' leaks into other functions and causes hangs.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/edge/validation_regex.bats",
+      "purpose": "Documents known bugs: prohibition regex requires trailing space so 'Never' or \"Don't\" at end-of-line are not detected. Tests serve as regression anchors even for known-buggy behavior.",
+      "importance": "reference"
+    },
+    {
+      "path": "tests/fixtures/synthesis/output.json",
+      "purpose": "Realistic synthesis output fixture used by merge.bats and integration tests. Contains full skills, subagents, hooks, MCP config, and settings_json fields.",
+      "importance": "reference"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Centralized Setup with Full Lib Sourcing",
+      "description": "Every test file calls _common_setup() which sources ALL 8 lib files (utils.sh, config.sh, agent.sh, gather.sh, ask.sh, research.sh, synthesize.sh, validate.sh, merge.sh) together in a single shell. This is intentional: it catches shell option side-effects that propagate across lib boundaries (e.g., 'shopt -s nullglob' in synthesize.sh bleeding into config.sh glob patterns). Individual libs are never sourced in isolation.",
+      "example_files": [
+        "tests/helpers/test_helper.bash",
+        "tests/unit/agent_run.bats"
+      ]
+    },
+    {
+      "name": "PATH-Based Mock Binary Injection",
+      "description": "Rather than function-level mocking (which fails in child bash processes spawned by run_agents_parallel), a real executable bash script is written to $MOCK_BIN_DIR and prepended to PATH. The mock reads MOCK_CLAUDE_RESPONSE, MOCK_CLAUDE_DISPATCH_DIR, and MOCK_CLAUDE_EXIT_CODE env vars. All invocations are appended to MOCK_CLAUDE_LOG with 'CALL:' prefix for post-test assertions. To use: call setup_mock_claude, set MOCK_CLAUDE_RESPONSE to a file path, run the function under test, then grep MOCK_CLAUDE_LOG.",
+      "example_files": [
+        "tests/helpers/mock_claude.bash",
+        "tests/unit/agent_run.bats",
+        "tests/integration/gather_phase.bats"
+      ]
+    },
+    {
+      "name": "Dispatch Mode for Multi-Agent Tests",
+      "description": "Integration tests that need different responses per agent use MOCK_CLAUDE_DISPATCH_DIR. The mock matches the agent name from the --json-schema argument filename (e.g., identity.json → identity) and returns the corresponding file from the dispatch directory. Falls back to MOCK_CLAUDE_RESPONSE if no match. Create dispatch files with: create_dispatch_response 'identity' \"$(cat fixtures/identity.json)\" '0.15'",
+      "example_files": [
+        "tests/helpers/mock_claude.bash",
+        "tests/integration/gather_phase.bats",
+        "tests/integration/synthesize_phase.bats"
+      ]
+    },
+    {
+      "name": "Cost File Format: phase|agent|amount",
+      "description": "Each agent writes a cost file to $WORK_DIR/costs/<name>.cost containing a single line in the format 'phase|agent_name|amount_in_usd' (e.g., 'gather|identity|0.42'). One file per agent avoids race conditions in parallel execution. Tests create these files directly with printf or echo to set up pre-conditions, then assert them with assert_file_exists and grep.",
+      "example_files": [
+        "tests/unit/agent_helpers.bats",
+        "tests/unit/config_budget.bats",
+        "tests/edge/cost_reporting.bats"
+      ]
+    },
+    {
+      "name": "Claude API Envelope Wrapping",
+      "description": "Real 'claude -p --output-format json' returns {is_error, total_cost_usd, structured_output: {...}}. The make_claude_envelope() helper in test_helper.bash constructs this envelope using jq, so fixture JSON can be wrapped correctly. Tests that verify cost extraction must use make_claude_envelope rather than raw JSON. The agent under test extracts .structured_output from the envelope.",
+      "example_files": [
+        "tests/helpers/test_helper.bash",
+        "tests/unit/agent_run.bats"
+      ]
+    },
+    {
+      "name": "Bug-Documenting Tests",
+      "description": "Several edge case tests explicitly document known bugs by asserting the buggy behavior. Example: validation_regex.bats asserts that 'Never' at end-of-line is NOT detected (because the regex requires a trailing space). These tests act as regression anchors — they fail if someone accidentally fixes or breaks the known behavior in an unexpected way, prompting re-evaluation.",
+      "example_files": [
+        "tests/edge/validation_regex.bats",
+        "tests/edge/corrupt_state.bats",
+        "tests/edge/numeric_edge_cases.bats"
+      ]
+    },
+    {
+      "name": "Resumability Testing via State + Force",
+      "description": "A core design property: completed agents and phases are skipped on re-run. Tests verify this by: (1) pre-creating findings files or calling mark_phase_complete, (2) running the phase/agent with FORCE=false, (3) asserting mock was NOT called and original output unchanged. The complement — FORCE=true reruns everything — is tested by verifying new output overwrites old.",
+      "example_files": [
+        "tests/integration/resume.bats",
+        "tests/unit/agent_run.bats",
+        "tests/integration/gather_phase.bats"
+      ]
+    }
+  ],
+  "conventions": {
+    "naming": "Test files use snake_case matching the lib file they test (agent_run.bats tests run_agent in agent.sh). Test names follow 'function does X in scenario Y' pattern. Fixture files match agent names exactly (identity.json, commands.json). Dispatch response files must match the agent name derived from the schema filename.",
+    "imports": "Every .bats file begins with load '../helpers/test_helper' (and optionally load '../helpers/mock_claude') in the setup() function, never at top-level. The helpers/ path is relative from the test file location. source_lib() is used for loading a single specific lib when the full set from _common_setup is insufficient.",
+    "error_handling": "Tests use bats assert_success/assert_failure for exit codes, assert_output/refute_output for stdout, assert_file_exists/assert_file_not_exists for filesystem state. Failed mock calls are detected by asserting MOCK_CLAUDE_LOG is empty or does not contain specific patterns. Budget exhaustion is tested by pre-writing cost files that sum to or exceed TOTAL_BUDGET.",
+    "other": [
+      "Environment variables are set in _common_setup and can be overridden per-test. Key vars: FORCE, DRY_RUN, TOTAL_BUDGET, GATHER_BUDGET, AGENT_BUDGET, AGENT_MODEL, SYNTH_MODEL, NON_INTERACTIVE, VERBOSE.",
+      "Tests run inside TEST_TMPDIR (a mktemp -d directory). WORK_DIR=$TEST_TMPDIR/.ultrainit, TARGET_DIR=$TEST_TMPDIR/target. Merge tests cd into TARGET_DIR in setup.",
+      "ULTRAINIT_MAX_RETRIES=1 is set in tests to prevent synthesis retry loops from adding test latency.",
+      "Color codes (BOLD, GREEN, RED, etc.) are exported as empty strings in _common_setup so log output doesn't corrupt assertion matching.",
+      "Fixtures are copied with use_fixture() or direct cp — never referenced in-place, so tests cannot corrupt shared fixtures.",
+      "The smoke/ directory is intentionally excluded from the bats test runs (make test-unit, make test-all) and is only used for manual/CI smoke testing."
+    ]
+  },
+  "dependencies": {
+    "internal": [
+      "lib/utils.sh — json_get, json_merge, mark_phase_complete, is_phase_complete, print_cost_summary",
+      "lib/config.sh — compute_budgets, set_agent_budget, check_budget, get_remaining_budget, setup_work_dir",
+      "lib/agent.sh — run_agent, run_agents_parallel, record_cost, get_failed_agents, diagnose_phase_failure",
+      "lib/gather.sh — gather_evidence (integration)",
+      "lib/synthesize.sh — synthesize, build_docs_context, build_tooling_context, merge_synthesis_passes, postprocess_descriptions",
+      "lib/merge.sh — merge_settings, write_mcp_config, backup_existing, write_artifacts",
+      "lib/validate.sh — validate_claude_md",
+      "scripts/validate-skill.sh — standalone skill validator",
+      "scripts/validate-subagent.sh — standalone subagent validator"
+    ],
+    "external_key": [
+      {
+        "name": "bats-core",
+        "purpose": "Test runner: @test declarations, assert_*/refute_* helpers, setup()/teardown() lifecycle"
+      },
+      {
+        "name": "bats-assert",
+        "purpose": "Assertion library: assert_output, assert_success, assert_failure, assert_file_exists"
+      },
+      {
+        "name": "bats-file",
+        "purpose": "File assertion helpers: assert_file_exists, assert_file_not_exists"
+      },
+      {
+        "name": "jq",
+        "purpose": "JSON construction in make_claude_envelope() and test fixture manipulation"
+      },
+      {
+        "name": "Docker (Dockerfile.test)",
+        "purpose": "Isolated test execution environment with bash, bats-core, and all Unix dependencies pre-installed"
+      }
+    ]
+  },
+  "domain_terms": [
+    {
+      "term": "findings file",
+      "meaning": "JSON output written by a gather agent to $WORK_DIR/findings/<name>.json. Its existence signals the agent completed successfully and is used for resumability checks."
+    },
+    {
+      "term": "dispatch mode",
+      "meaning": "Mock Claude mode where MOCK_CLAUDE_DISPATCH_DIR contains per-agent JSON response files. The mock matches agent name from the schema argument filename and returns the corresponding file."
+    },
+    {
+      "term": "cost file",
+      "meaning": "Plain text file at $WORK_DIR/costs/<name>.cost containing 'phase|agent|amount'. One file per agent to avoid write-race conditions in parallel execution."
+    },
+    {
+      "term": "envelope",
+      "meaning": "The JSON wrapper that real 'claude -p --output-format json' returns: {is_error, total_cost_usd, structured_output: {...}}. make_claude_envelope() constructs this in tests."
+    },
+    {
+      "term": "critical agent",
+      "meaning": "An agent whose failure aborts the entire gather phase (currently: identity and structure-scout). Non-critical agents may fail without aborting."
+    },
+    {
+      "term": "phase",
+      "meaning": "One of five pipeline stages (gather, ask, research, synthesize, validate). Completion is tracked in state.json. FORCE=true bypasses all phase completion checks."
+    },
+    {
+      "term": "nullglob regression",
+      "meaning": "synthesize.sh runs 'shopt -s nullglob' which leaks into other sourced libs when all libs are loaded together. corrupt_state.bats and synthesize_helpers.bats have specific tests for this."
+    },
+    {
+      "term": "postprocess_descriptions",
+      "meaning": "A synthesis postprocessing step that replaces angle brackets (<something>) with quotes in YAML frontmatter description fields, required for Claude Code compatibility."
+    }
+  ],
+  "gotchas": [
+    {
+      "issue": "All libs are sourced together in _common_setup(), not individually. This means 'shopt -s nullglob' in synthesize.sh affects glob patterns in all other libs during the same test. Several edge tests exist specifically for this regression.",
+      "solution": "Never test a single lib in isolation by sourcing only it. Always use _common_setup() which loads the full lib stack. If adding a new shopt or set option to any lib, check corrupt_state.bats for nullglob-related assertions."
+    },
+    {
+      "issue": "Function-level mocking (replacing run_agent with a stub) does not work for parallel tests. run_agents_parallel spawns child bash processes that re-source libs from disk, so any in-process function override is invisible to children.",
+      "solution": "Always use the PATH-based mock claude binary (setup_mock_claude from mock_claude.bash). For multi-agent scenarios, use MOCK_CLAUDE_DISPATCH_DIR with per-agent response files."
+    },
+    {
+      "issue": "The prohibition detection regex in validate_claude_md requires a trailing space: grep -E '(never |don.t |do not )'. This means 'Never' or \"Don't\" at end-of-line are not detected. This is a documented bug, not an oversight.",
+      "solution": "Do not attempt to fix the regex without updating validation_regex.bats — the bug-documenting tests will fail if the behavior changes unexpectedly. File a proper issue and update both together."
+    },
+    {
+      "issue": "Dispatch mode matches agent name from the --json-schema argument filename. If the schema filename differs from the agent name passed to run_agent, the dispatch lookup will fail and fall through to MOCK_CLAUDE_RESPONSE.",
+      "solution": "Ensure dispatch response filenames exactly match the agent name used in run_agent calls (e.g., 'git-forensics' not 'git_forensics'). Check MOCK_CLAUDE_LOG to debug mismatches."
+    },
+    {
+      "issue": "make_claude_envelope() must be used for any test that checks cost extraction. Passing raw JSON without the envelope wrapper will cause run_agent to fail parsing .total_cost_usd.",
+      "solution": "Always wrap fixture JSON with make_claude_envelope() when the test exercises cost recording. Raw JSON is fine only when testing functions that don't invoke run_agent."
+    },
+    {
+      "issue": "ULTRAINIT_MAX_RETRIES is set to 1 in tests. If a test creates a scenario where synthesis legitimately needs retries (e.g., testing retry exhaustion), the test will behave differently from production.",
+      "solution": "Set ULTRAINIT_MAX_RETRIES explicitly in the specific test that needs retry behavior rather than relying on the global default."
+    },
+    {
+      "issue": "Malformed cost files (missing pipe delimiters, non-numeric values) are silently ignored rather than erroring. For example, a cost file containing '60' with no pipes is treated as $0 spent. This is a documented silent bug in corrupt_state.bats.",
+      "solution": "Cost files must follow the 'phase|agent|amount' format exactly. If adding cost file writers, validate format before writing."
+    }
+  ],
+  "commands": [
+    {
+      "command": "make test-image",
+      "purpose": "Build the Docker test image locally (one-time setup before running tests)"
+    },
+    {
+      "command": "make test-unit",
+      "purpose": "Run all unit tests (~15s) inside Docker"
+    },
+    {
+      "command": "make test-scripts",
+      "purpose": "Run standalone validator script tests (validate-skill.sh, validate-subagent.sh)"
+    },
+    {
+      "command": "make test-edge",
+      "purpose": "Run edge case and boundary tests"
+    },
+    {
+      "command": "make test-all",
+      "purpose": "Run the full test suite (unit + scripts + edge + integration)"
+    }
+  ],
+  "skill_opportunities": [
+    {
+      "name": "add-bats-test",
+      "description": "Scaffold a new .bats test file for a given lib function or phase, wiring up mock claude, correct helper imports, and a representative test group following the project's conventions.",
+      "workflow_steps": [
+        "Identify which lib file and function to test",
+        "Determine test location (unit/, integration/, edge/, or scripts/)",
+        "Create .bats file with setup()/teardown() calling _common_setup and optionally setup_mock_claude",
+        "Write test groups with @test blocks using bats assert_ helpers",
+        "For agent tests, create MOCK_CLAUDE_RESPONSE or dispatch dir with make_claude_envelope-wrapped fixtures",
+        "Run make test-unit or make test-all to verify"
+      ]
+    },
+    {
+      "name": "add-fixture",
+      "description": "Generate a realistic fixture JSON file for a new agent type, matching the envelope format and schema structure expected by run_agent and integration tests.",
+      "workflow_steps": [
+        "Read the agent's schema file from schemas/",
+        "Create a realistic JSON payload matching the schema",
+        "Wrap with make_claude_envelope structure: {is_error: false, total_cost_usd: N, structured_output: {...}}",
+        "Save to tests/fixtures/findings/<agent-name>.json",
+        "Create dispatch response file if needed for integration tests"
+      ]
+    }
+  ]
+}

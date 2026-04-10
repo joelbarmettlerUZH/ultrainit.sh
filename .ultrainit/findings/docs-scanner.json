@@ -1,0 +1,107 @@
+{
+  "documents": [
+    {
+      "path": "README.md",
+      "type": "readme",
+      "summary": "Primary user-facing documentation (~380 lines) covering what ultrainit is, quick start, prerequisites, CLI flags, what gets generated, cost breakdown, and an FAQ. Explains the 5-phase pipeline (Gather, Ask, Research, Synthesize, Validate) at a high level for end users."
+    },
+    {
+      "path": "CLAUDE.md",
+      "type": "ai_config",
+      "summary": "915-line technical architecture document that doubles as the Claude Code configuration for this project ('eating its own dogfood'). Contains exhaustive detail on every phase, agent, schema, merge strategy, CLI interface, cost model, cross-platform compatibility, and the bats-core test suite."
+    },
+    {
+      "path": "Makefile",
+      "type": "other",
+      "summary": "71-line build and test orchestration file defining targets for bundling (bundle), syntax checking (check), Docker-based bats test suites (test-unit, test-scripts, test-integration, test-edge, test-all), and smoke tests against real repos. Defines the TEST_IMAGE variable pointing to the GHCR-hosted test container."
+    },
+    {
+      "path": ".github/workflows/test.yml",
+      "type": "other",
+      "summary": "GitHub Actions CI workflow that triggers on push to main and pull requests. Runs shell syntax checks on all .sh files (excluding test-repos/), validates all schemas/*.json with jq, then executes the full bats test suite inside the pre-built Docker container."
+    },
+    {
+      "path": ".github/workflows/docker-test-image.yml",
+      "type": "other",
+      "summary": "GitHub Actions workflow (~548 bytes) that rebuilds and pushes the bats-core test Docker image to GHCR whenever Dockerfile.test changes on main. Keeps the CI test environment up to date automatically."
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "type": "other",
+      "summary": "GitHub Actions release workflow (~1.5 KB) that handles publishing releases. Likely runs bundle.sh to produce the self-contained dist/ultrainit.sh and uploads it to GitHub Releases as a downloadable artifact."
+    },
+    {
+      "path": "Dockerfile.test",
+      "type": "other",
+      "summary": "634-byte Docker image definition for the isolated bats-core test environment. Installs bash, bats-core, and all required dependencies so tests run reproducibly without polluting the host system."
+    },
+    {
+      "path": "docs/diagram.png",
+      "type": "architecture",
+      "summary": "Architecture diagram image (119.5 KB) visually depicting the ultrainit pipeline. Companion to the ASCII diagram in CLAUDE.md."
+    },
+    {
+      "path": "docs/diagram.drawio",
+      "type": "architecture",
+      "summary": "Editable draw.io source file (22 KB) for the architecture diagram. Allows the diagram to be updated as the architecture evolves."
+    },
+    {
+      "path": "LICENSE",
+      "type": "other",
+      "summary": "Apache License 2.0 (10.76 KB). Governs use, modification, and distribution of the ultrainit project."
+    },
+    {
+      "path": "prompts/synthesizer.md",
+      "type": "other",
+      "summary": "The most critical agent prompt — instructs the synthesis Claude instance on how to produce CLAUDE.md files, skills, hooks, subagents, MCP config, and settings.json from gathered findings. Defines quality constraints (250-400 line CLAUDE.md, real file references, no generic phrases, prohibitions must include alternatives)."
+    },
+    {
+      "path": "prompts/",
+      "type": "other",
+      "summary": "Directory of 15 focused markdown system prompts (identity, commands, git-forensics, patterns, tooling, docs-scanner, security-scan, structure-scout, module-analyzer, domain-researcher, mcp-discoverer, synthesizer, synthesizer-docs, synthesizer-tooling). Each drives one specialist Claude agent with a single well-scoped analytical task."
+    },
+    {
+      "path": "schemas/",
+      "type": "api_docs",
+      "summary": "Directory of 14 JSON schemas (identity.json, commands.json, git-forensics.json, patterns.json, tooling.json, docs.json, security.json, structure-scout.json, module-analysis.json, domain-research.json, mcp-recommendations.json, synthesis-docs.json, synthesis-tooling.json, synthesis-output.json) that enforce typed, parseable structured output from every agent call."
+    },
+    {
+      "path": "bundle.sh",
+      "type": "other",
+      "summary": "3.5 KB build script that bundles all source files (lib/*.sh, prompts/*.md, schemas/*.json, scripts/) into a single self-contained dist/ultrainit.sh for curl-pipe-bash distribution. The bundled file self-extracts to a temp directory at runtime."
+    }
+  ],
+  "documented_conventions": [
+    "5-phase pipeline architecture: Gather → Ask → Research → Synthesize → Validate & Write (CLAUDE.md §1-7)",
+    "Agent abstraction pattern: focused prompt + JSON schema + scoped allowedTools + model selection (CLAUDE.md §2.2)",
+    "Parallel agent execution via background bash processes + explicit variable propagation in child scripts (CLAUDE.md §2.2)",
+    "Resumability: agents skip if findings file already exists; --force to override (CLAUDE.md §2.2)",
+    "Budget enforcement: total divided 50/10/30/10% across phases; per-agent --max-budget-usd cap (CLAUDE.md §10)",
+    "Working directory layout: all intermediate state in .ultrainit/ (findings/, synthesis/, logs/, backups/, costs/, state.json) (CLAUDE.md §2.3)",
+    "Merge strategy: overwrite CLAUDE.md (with backup), deep-merge settings.json, never overwrite existing skills/hooks/agents (CLAUDE.md §8)",
+    "Synthesis quality constraints: 250-400 line CLAUDE.md, zero generic phrases, real file references, every prohibition needs an alternative (CLAUDE.md §6)",
+    "Hook requirements: shebang + set -euo pipefail, reads JSON from stdin, exit 2 for blocking / exit 0 non-blocking (CLAUDE.md §12)",
+    "Skill requirements: kebab-case name, description with trigger phrases and negative scope, min 3 codebase file refs, verification section (CLAUDE.md §12 / scripts/validate-skill.sh)",
+    "Subagent requirements: frontmatter with name+description, tool scoping matches purpose, min 3 file refs (scripts/validate-subagent.sh)",
+    "Test strategy: bats-core in Docker, mock claude binary on PATH (single + dispatch modes), no real Claude calls in tests (CLAUDE.md §12)",
+    "Two-pass synthesis: Pass 1 generates CLAUDE.md files, Pass 2 generates tooling artifacts using Pass 1 output as source of truth (CLAUDE.md §6)",
+    "Cross-platform dependency check at startup with platform-specific install instructions (CLAUDE.md §11)",
+    "Distribution via curl-pipe-bash with GitHub Releases; bundle.sh produces single self-contained file (CLAUDE.md §13)",
+    "CI runs shell syntax checks on all .sh files (excluding test-repos/) and validates all schemas/*.json with jq (.github/workflows/test.yml)",
+    "Large prompts (>100KB) piped via stdin instead of positional arg to avoid shell arg length limits (CLAUDE.md §2.2)",
+    "Per-agent cost files in costs/ directory to avoid race conditions during parallel writes (CLAUDE.md §2.3)",
+    "Failed artifact revision: only failing skills/hooks are revised, passing ones preserved (CLAUDE.md §7)"
+  ],
+  "undocumented_gaps": [
+    "No CONTRIBUTING.md — no documented process for external contributors (branching, PR format, commit message style, review requirements)",
+    "No CHANGELOG.md or release notes file — version history lives only in GitHub Releases, not in the repo",
+    "No ADRs — architectural decisions (why shell+Claude vs Python, why two synthesis passes, why bats-core) are explained inline in CLAUDE.md but not recorded as discrete decision records with context/alternatives/consequences",
+    "bundle.sh behavior is undocumented — how self-extraction works at runtime, what temp directory is used, cleanup behavior",
+    "No documented error recovery playbook — what to do when specific agents fail beyond the generic diagnose_phase_failure description",
+    "No documented schema evolution process — how to add a new field to an agent schema without breaking existing cached findings",
+    "No documented guidance on adding a new gather agent — the pattern is implied by reading gather.sh but not written as a contribution guide",
+    "validate.sh revision agent behavior is undocumented — how many revision rounds, what happens if revision still fails after retries",
+    "No documented policy on when to use haiku vs sonnet vs sonnet[1m] for new agents beyond the existing examples",
+    "lib/utils.sh functions (json_get, json_merge, mark_phase_complete, etc.) have no docstrings or usage examples beyond what appears in tests"
+  ]
+}

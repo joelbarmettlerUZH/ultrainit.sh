@@ -1,0 +1,126 @@
+{
+  "build": [
+    {
+      "command": "bash bundle.sh > dist/ultrainit.sh && chmod +x dist/ultrainit.sh",
+      "scope": "project-wide",
+      "ci_verified": false,
+      "source": "Makefile (bundle target)"
+    },
+    {
+      "command": "docker build -f Dockerfile.test -t ghcr.io/joelbarmettleruzh/ultrainit-test:latest .",
+      "scope": "project-wide",
+      "ci_verified": true,
+      "source": "Makefile (test-image target) / .github/workflows/docker-test-image.yml"
+    }
+  ],
+  "test": [
+    {
+      "command": "make test-unit",
+      "scope": "tests/unit/",
+      "ci_verified": true,
+      "source": "Makefile / .github/workflows/test.yml"
+    },
+    {
+      "command": "make test-scripts",
+      "scope": "tests/scripts/",
+      "ci_verified": true,
+      "source": "Makefile / .github/workflows/test.yml"
+    },
+    {
+      "command": "make test-edge",
+      "scope": "tests/edge/",
+      "ci_verified": true,
+      "source": "Makefile / .github/workflows/test.yml"
+    },
+    {
+      "command": "make test-integration",
+      "scope": "tests/integration/",
+      "ci_verified": true,
+      "source": "Makefile / .github/workflows/test.yml"
+    },
+    {
+      "command": "make test-all",
+      "scope": "tests/",
+      "ci_verified": false,
+      "source": "Makefile (test-all target)"
+    },
+    {
+      "command": "bats tests/unit/",
+      "scope": "tests/unit/",
+      "ci_verified": true,
+      "source": ".github/workflows/test.yml"
+    },
+    {
+      "command": "bats tests/scripts/",
+      "scope": "tests/scripts/",
+      "ci_verified": true,
+      "source": ".github/workflows/test.yml"
+    },
+    {
+      "command": "bats tests/edge/",
+      "scope": "tests/edge/",
+      "ci_verified": true,
+      "source": ".github/workflows/test.yml"
+    },
+    {
+      "command": "bats tests/integration/",
+      "scope": "tests/integration/",
+      "ci_verified": true,
+      "source": ".github/workflows/test.yml"
+    },
+    {
+      "command": "bash tests/smoke/run-smoke.sh",
+      "scope": "project-wide",
+      "ci_verified": false,
+      "source": "Makefile (smoke target)"
+    },
+    {
+      "command": "bash tests/smoke/run-smoke.sh --source",
+      "scope": "project-wide",
+      "ci_verified": false,
+      "source": "Makefile (smoke-source target)"
+    }
+  ],
+  "lint": [
+    {
+      "command": "make check",
+      "scope": "project-wide",
+      "ci_verified": true,
+      "source": "Makefile / .github/workflows/test.yml (syntax job)"
+    },
+    {
+      "command": "bash -n ultrainit.sh && for f in lib/*.sh; do bash -n \"$f\"; done",
+      "scope": "project-wide",
+      "ci_verified": true,
+      "source": "Makefile (check target) / .github/workflows/test.yml"
+    },
+    {
+      "command": "find . -name '*.sh' -not -path './test-repos/*' | xargs bash -n",
+      "scope": "project-wide",
+      "ci_verified": true,
+      "source": ".github/workflows/test.yml (syntax job)"
+    },
+    {
+      "command": "for f in schemas/*.json; do jq empty \"$f\"; done",
+      "scope": "schemas/",
+      "ci_verified": true,
+      "source": "Makefile (check target) / .github/workflows/test.yml"
+    }
+  ],
+  "format": [],
+  "typecheck": [],
+  "other": [
+    {
+      "command": "make clean",
+      "scope": "dist/",
+      "ci_verified": false,
+      "source": "Makefile (clean target)"
+    },
+    {
+      "command": "bash dist/ultrainit.sh --non-interactive --skip-research test-repos/open-webui",
+      "scope": "test-repos/open-webui",
+      "ci_verified": false,
+      "source": "Makefile (test target)"
+    }
+  ]
+}
