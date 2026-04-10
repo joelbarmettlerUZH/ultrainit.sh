@@ -1,0 +1,239 @@
+{
+  "module_path": "tests/smoke/",
+  "purpose": "End-to-end smoke tests that run the full ultrainit pipeline against a minimal synthetic Flask project using real Claude API calls. Unlike unit/integration tests (which mock Claude), these validate the complete bundled artifact, actual model output quality, cost tracking, and generated artifact usability — catching integration failures that mocks cannot detect.",
+  "architecture": {
+    "overview": "Two-layer design: a single orchestrator script (run-smoke.sh) that drives the full pipeline, and a 4-file synthetic mini-project that serves as the analysis target. The smoke test is intentionally not integrated into automated CI (costs real money) — it runs manually or at release time. It has three execution modes (bundled/source/curl) to test different distribution paths. Assertions are 12 hand-written checks using grep/jq directly against the generated artifacts rather than bats-style assertions.",
+    "subdirectories": [
+      {
+        "path": "tests/smoke/",
+        "purpose": "Root — contains only run-smoke.sh, the test orchestrator",
+        "key_files": [
+          "tests/smoke/run-smoke.sh"
+        ]
+      },
+      {
+        "path": "tests/smoke/mini-project/",
+        "purpose": "Synthetic target codebase: a 4-file minimal Flask TODO REST API designed to be small enough to analyze in seconds but rich enough to exercise all gathering agents (Python language, Flask framework, pytest suite, README)",
+        "key_files": [
+          "tests/smoke/mini-project/app.py",
+          "tests/smoke/mini-project/requirements.txt",
+          "tests/smoke/mini-project/README.md",
+          "tests/smoke/mini-project/tests/test_app.py",
+          "tests/smoke/mini-project/.gitignore"
+        ]
+      }
+    ],
+    "data_flow": "run-smoke.sh cleans prior artifacts → selects execution mode (bundled/source/curl) → runs ultrainit with --non-interactive --skip-research --budget 15 --model haiku against mini-project/ → waits for full pipeline completion → validates generated artifacts: CLAUDE.md (line count ≥50, project-specific terms, code blocks, no generic filler), .claude/skills/ (≥1 skill), .ultrainit/findings/ (≥5 JSON files), .ultrainit/costs/ (≥1 cost file) → reports PASS/FAIL per check and exits 1 on any failure"
+  },
+  "key_files": [
+    {
+      "path": "tests/smoke/run-smoke.sh",
+      "purpose": "Main smoke test orchestrator (161 lines). Handles 3 execution modes, cleans stale artifacts before each run, invokes ultrainit, and runs 12 artifact assertions. Uses FAILURES counter pattern — all checks run even if early ones fail, then exits 1 if any failed.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/smoke/mini-project/app.py",
+      "purpose": "34-line Flask TODO API with 3 endpoints (GET/POST/DELETE). Chosen to give the identity, commands, patterns, and tooling agents enough signal to generate non-trivial output while keeping token consumption and runtime minimal.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/smoke/mini-project/tests/test_app.py",
+      "purpose": "4 pytest test cases exercising the Flask API. Presence of a test suite is required for the commands agent to find a 'test' command and for CLAUDE.md to include pytest references — one of the smoke test assertions checks for 'pytest' in CLAUDE.md.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/smoke/mini-project/requirements.txt",
+      "purpose": "Declares flask==3.0.0 and pytest==8.0.0. The identity agent reads this to determine frameworks and versions; the smoke test asserts CLAUDE.md mentions 'flask' and 'python'.",
+      "importance": "reference"
+    },
+    {
+      "path": "tests/smoke/mini-project/README.md",
+      "purpose": "Minimal 4-section README (Setup, Testing, API). Feeds the docs-scanner agent and ensures the generated CLAUDE.md doesn't duplicate it verbatim.",
+      "importance": "reference"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "FAILURES counter assertion pattern",
+      "description": "All 12 checks run unconditionally; each failed check increments a FAILURES counter and prints a red message. Script exits 1 only at the very end if FAILURES > 0. This is in contrast to set -e fail-fast — the goal is to see ALL failures in one run rather than stopping at the first.",
+      "example_files": [
+        "tests/smoke/run-smoke.sh"
+      ]
+    },
+    {
+      "name": "Three-mode execution switch",
+      "description": "run-smoke.sh parses --source and --curl flags to select one of three invocation strategies: (1) default 'bundled' — runs dist/ultrainit.sh (calls make bundle if missing); (2) --source — runs ultrainit.sh directly from repo root; (3) --curl — simulates curl-pipe-bash using local bundle. This tests all three distribution paths without duplication of assertion logic.",
+      "example_files": [
+        "tests/smoke/run-smoke.sh"
+      ]
+    },
+    {
+      "name": "Content-specific assertions (anti-generic check)",
+      "description": "The smoke test asserts that CLAUDE.md contains project-specific strings ('flask', 'python', 'todo', 'api') AND does NOT contain generic filler phrases ('best practice', 'clean code', 'SOLID principles'). This is a proxy for model output quality — it catches regressions where the synthesizer produces boilerplate instead of codebase-specific guidance.",
+      "example_files": [
+        "tests/smoke/run-smoke.sh"
+      ]
+    },
+    {
+      "name": "Artifact existence + minimum-length checks",
+      "description": "Rather than parsing generated content structurally, smoke tests use line-count thresholds (CLAUDE.md ≥50 lines), directory non-empty checks (.claude/skills/ has ≥1 file), and file count checks (.ultrainit/findings/ has ≥5 JSON files). These are deliberately loose — enough to detect total failures without being brittle to cosmetic output changes.",
+      "example_files": [
+        "tests/smoke/run-smoke.sh"
+      ]
+    },
+    {
+      "name": "Pre-run artifact cleanup",
+      "description": "run-smoke.sh always deletes .ultrainit/, CLAUDE.md, and .claude/ from mini-project/ before running. This ensures each smoke run starts from a clean slate — no stale cached findings from a previous run can mask a real failure (the --force flag is implied).",
+      "example_files": [
+        "tests/smoke/run-smoke.sh"
+      ]
+    }
+  ],
+  "conventions": {
+    "naming": "Single orchestrator script named run-smoke.sh (verb-noun, kebab-case). Mini-project follows Flask conventions (app.py, tests/test_app.py). No bats file naming — smoke tests are plain bash, not bats-core.",
+    "imports": "run-smoke.sh sources no helpers — it is self-contained. It does not use test_helper.bash or mock_claude.bash (those are for bats unit tests). All dependencies are standard Unix tools: grep, jq, wc, find, bash.",
+    "error_handling": "FAILURES counter pattern (described above). Each check is a standalone if/then block; failed checks print a red [FAIL] line and increment FAILURES. At the end: 'if [[ $FAILURES -gt 0 ]]; then exit 1; fi'. No trap handlers.",
+    "other": [
+      "Color output: Uses ANSI codes (GREEN=\\033[0;32m, RED=\\033[0;31m, NC=\\033[0m) for terminal readability. Not disabled in smoke tests (unlike unit tests which suppress color via NO_COLOR).",
+      "Budget cap: Always passes --budget 15 to limit runaway costs. Combined with --model haiku and --skip-research, keeps smoke runs under $2.",
+      "No bats dependency: Smoke tests can run on any system with bash + jq + the claude CLI. They do NOT require Docker or bats-core installation."
+    ]
+  },
+  "dependencies": {
+    "internal": [
+      "dist/ultrainit.sh (bundled mode) — built by 'make bundle' from ultrainit.sh + lib/ + schemas/ + prompts/ + scripts/",
+      "ultrainit.sh (source mode) — the unbundled entry point",
+      "lib/ — all phase libraries, indirectly exercised through ultrainit.sh",
+      "schemas/ — JSON schemas used by agents during the run",
+      "prompts/ — agent system prompts used during the run"
+    ],
+    "external_key": [
+      {
+        "name": "claude CLI",
+        "purpose": "Real Claude API calls — smoke tests make genuine claude -p invocations, unlike unit tests which mock it"
+      },
+      {
+        "name": "jq",
+        "purpose": "Validates settings.json is parseable JSON (smoke assertion #3) and processes cost files"
+      },
+      {
+        "name": "grep",
+        "purpose": "Content assertions on CLAUDE.md (term presence, generic phrase absence)"
+      },
+      {
+        "name": "bash",
+        "purpose": "Script runtime — no bats-core required for smoke tests"
+      },
+      {
+        "name": "make",
+        "purpose": "run-smoke.sh calls 'make bundle' automatically if dist/ultrainit.sh is missing"
+      }
+    ]
+  },
+  "domain_terms": [
+    {
+      "term": "smoke test",
+      "meaning": "End-to-end test using real Claude API against a synthetic mini-project; validates integration, not just logic. Costs real money (~$1–$2 per run). Not run in CI."
+    },
+    {
+      "term": "bundled mode",
+      "meaning": "Default smoke test mode: tests dist/ultrainit.sh, the self-extracting single-file release artifact. Tests that bundling didn't break anything."
+    },
+    {
+      "term": "source mode",
+      "meaning": "Smoke test mode (--source flag): runs ultrainit.sh directly from repo root without bundling. Faster for development iteration."
+    },
+    {
+      "term": "curl mode",
+      "meaning": "Smoke test mode (--curl flag): simulates the curl-pipe-bash installation path using the local bundle as a stand-in for the download."
+    },
+    {
+      "term": "mini-project",
+      "meaning": "The 4-file synthetic Flask TODO API in tests/smoke/mini-project/ that serves as the analysis target for smoke tests."
+    },
+    {
+      "term": "FAILURES counter",
+      "meaning": "Integer variable in run-smoke.sh that accumulates failed check count. All checks run before the script exits, enabling visibility into all failures at once."
+    },
+    {
+      "term": "anti-generic check",
+      "meaning": "Smoke assertion that verifies CLAUDE.md does NOT contain filler phrases like 'best practice' or 'clean code' — proxy for synthesizer output quality."
+    }
+  ],
+  "gotchas": [
+    {
+      "issue": "Smoke tests are NOT idempotent by default without pre-cleanup — re-running without cleanup would find cached .ultrainit/ findings and skip agents, potentially masking failures",
+      "solution": "run-smoke.sh explicitly deletes .ultrainit/, CLAUDE.md, and .claude/ before each run. Never remove this cleanup step. If adding new artifacts, add them to the cleanup block too."
+    },
+    {
+      "issue": "Bundled mode calls 'make bundle' automatically if dist/ultrainit.sh is missing, but make must be available and the build must succeed. A build failure will cause the smoke test to fail with a cryptic error rather than a clear 'bundle failed' message.",
+      "solution": "Run 'make bundle' manually first if troubleshooting smoke test startup failures. Check dist/ exists before running smoke tests in environments without make."
+    },
+    {
+      "issue": "Smoke tests use --skip-research but NOT --non-interactive — the ask.sh phase will try to read from /dev/tty. If run in a headless environment (no terminal), the ask phase will hang or fail.",
+      "solution": "run-smoke.sh passes --non-interactive. If modifying the invocation, always keep --non-interactive for headless/CI use."
+    },
+    {
+      "issue": "The anti-generic phrase check is a grep against a hardcoded list ('best practice', 'clean code', 'SOLID principles'). If the synthesizer prompt changes and starts using different generic phrases, this check won't catch them.",
+      "solution": "When updating the synthesizer prompt or output format, review and extend the hardcoded phrase list in run-smoke.sh. The list is not derived from the validate.sh production validator — it's a separate, manually maintained set."
+    },
+    {
+      "issue": "Smoke tests do NOT run integration tests (bats). They are separate systems with separate dependencies. A developer might fix a unit test failure but not realize the smoke test still fails because bundling is broken.",
+      "solution": "After any change to the bundling logic (Makefile, ultrainit.sh header/footer), always run 'make smoke' in addition to 'make test-all'."
+    },
+    {
+      "issue": "The line count threshold for CLAUDE.md is only 50 lines — much lower than the production validator's 100-line minimum. A seriously degraded model output could still pass the smoke test while failing production validation.",
+      "solution": "The thresholds are intentionally low to avoid false failures from model output variance. The production validator (Phase 5) enforces stricter rules. Smoke tests are a coarse sanity check, not a quality gate."
+    }
+  ],
+  "commands": [
+    {
+      "command": "bash tests/smoke/run-smoke.sh",
+      "purpose": "Run smoke test using bundled dist/ultrainit.sh (builds bundle if missing)"
+    },
+    {
+      "command": "bash tests/smoke/run-smoke.sh --source",
+      "purpose": "Run smoke test using unbundled ultrainit.sh directly (faster for dev)"
+    },
+    {
+      "command": "bash tests/smoke/run-smoke.sh --curl",
+      "purpose": "Run smoke test simulating curl-pipe-bash installation path"
+    },
+    {
+      "command": "make smoke",
+      "purpose": "Makefile shorthand for the bundled smoke test"
+    },
+    {
+      "command": "make smoke-source",
+      "purpose": "Makefile shorthand for the source-mode smoke test"
+    },
+    {
+      "command": "make bundle",
+      "purpose": "Build dist/ultrainit.sh before running bundled smoke tests"
+    }
+  ],
+  "skill_opportunities": [
+    {
+      "name": "run-smoke-test",
+      "description": "Trigger a smoke test run in the correct mode, check output for failures, and summarize results. Useful when a developer needs to validate a change end-to-end before opening a PR.",
+      "workflow_steps": [
+        "Ask developer which mode (bundled/source/curl)",
+        "If bundled, verify dist/ultrainit.sh exists or run 'make bundle'",
+        "Run bash tests/smoke/run-smoke.sh [--source|--curl]",
+        "Parse output for [FAIL] lines",
+        "Report pass/fail count and highlight failed checks"
+      ]
+    },
+    {
+      "name": "add-smoke-assertion",
+      "description": "Add a new assertion to run-smoke.sh following the FAILURES counter pattern. Useful when new artifact types are added to ultrainit's output.",
+      "workflow_steps": [
+        "Read tests/smoke/run-smoke.sh to understand current assertion format",
+        "Identify what artifact or property needs validation",
+        "Write assertion using if/grep or if/jq pattern with FAILURES increment",
+        "Add cleanup of new artifact to the pre-run cleanup block",
+        "Document what the assertion catches"
+      ]
+    }
+  ]
+}

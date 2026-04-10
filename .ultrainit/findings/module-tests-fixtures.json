@@ -1,0 +1,247 @@
+{
+  "module_path": "tests/fixtures/",
+  "purpose": "Realistic JSON fixture files representing the output of each `claude -p` agent call at every pipeline stage. Used by the bats-core test suite so no real Claude calls are made during testing. Fixtures cover Phase 1 (gather findings), developer answers, Phase 4 synthesis passes, and markdown skill/subagent validation cases.",
+  "architecture": {
+    "overview": "The directory is organized by pipeline stage and artifact type. Each subdirectory maps to a distinct output category: `findings/` for Phase 1 agent outputs, `synthesis/` for Phase 4 pass outputs, `skills/` and `subagents/` for markdown validation test cases, and two empty placeholder dirs (`envelopes/`, `hooks/`) for future use. Fixtures are plain JSON (or markdown for skill/subagent cases) that tests either copy directly into the work directory or wrap in a Claude API envelope via `make_claude_envelope()` for mock dispatch.",
+    "subdirectories": [
+      {
+        "path": "tests/fixtures/findings/",
+        "purpose": "One JSON file per Phase 1 gather agent. Each file is the `structured_output` field a real `claude -p --output-format json --json-schema` call would return for that agent.",
+        "key_files": [
+          "identity.json",
+          "commands.json",
+          "git-forensics.json",
+          "patterns.json",
+          "tooling.json",
+          "docs-scanner.json",
+          "security-scan.json",
+          "structure-scout.json"
+        ]
+      },
+      {
+        "path": "tests/fixtures/synthesis/",
+        "purpose": "Phase 4 synthesis outputs. output-docs.json is pass 1 (CLAUDE.md generation), output-tooling.json is pass 2 (skills/hooks/MCP), output.json is the merged final artifact ready for Phase 5 validation and write.",
+        "key_files": [
+          "output-docs.json",
+          "output-tooling.json",
+          "output.json"
+        ]
+      },
+      {
+        "path": "tests/fixtures/skills/",
+        "purpose": "Three skill markdown fixtures used exclusively by validate_skill.bats: one valid case and two invalid cases (missing description, angle brackets in description).",
+        "key_files": [
+          "valid-skill/SKILL.md",
+          "invalid-skill-no-desc/SKILL.md",
+          "invalid-skill-angle-brackets/SKILL.md"
+        ]
+      },
+      {
+        "path": "tests/fixtures/subagents/",
+        "purpose": "Two subagent markdown fixtures used exclusively by validate_subagent.bats: one valid case and one with no frontmatter.",
+        "key_files": [
+          "valid-subagent.md",
+          "invalid-subagent.md"
+        ]
+      },
+      {
+        "path": "tests/fixtures/envelopes/",
+        "purpose": "Empty placeholder directory reserved for future pre-built envelope fixtures. Currently envelope wrapping is done inline in tests via make_claude_envelope()."
+      },
+      {
+        "path": "tests/fixtures/hooks/",
+        "purpose": "Empty placeholder directory reserved for future hook script fixtures."
+      }
+    ],
+    "data_flow": "Unit tests copy fixture files directly into the temp WORK_DIR (e.g., `cp findings/identity.json $WORK_DIR/findings/`). Integration tests wrap fixtures with `make_claude_envelope()` to produce the full `{is_error, total_cost_usd, structured_output}` envelope, then write them to a mock dispatch directory keyed by agent name. The mock `claude` binary reads from the dispatch dir and returns the matching envelope to `run_agent()`, which extracts `.structured_output` into the findings file. Skill/subagent markdown fixtures are passed directly as file paths to the standalone validator scripts."
+  },
+  "key_files": [
+    {
+      "path": "tests/fixtures/findings/identity.json",
+      "purpose": "Project metadata output (name, languages, frameworks, monorepo, deployment). Most broadly used fixture — appears in synthesize_helpers.bats, gather_phase.bats, synthesize_phase.bats, and resume.bats.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/fixtures/synthesis/output.json",
+      "purpose": "Complete merged synthesis output used by merge.bats to test merge_settings(), write_mcp_config(), and write_artifacts(). Contains CLAUDE.md + 2 skills + 1 hook + 1 MCP server config + settings_hooks.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/fixtures/synthesis/output-tooling.json",
+      "purpose": "Pass 2 synthesis output (skills, hooks, MCP, subagents, settings_hooks). Intentionally lacks claude_md — tests the merge logic that combines pass 1 and pass 2 outputs.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/fixtures/synthesis/output-docs.json",
+      "purpose": "Pass 1 synthesis output (claude_md + subdirectory_claude_mds). Contains a realistic CLAUDE.md with deliberate padding lines to meet minimum length validation thresholds.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/fixtures/findings/git-forensics.json",
+      "purpose": "Git history analysis output. Has a known field-name mismatch with its schema: uses 'path' in hotspots/coupling arrays where the schema expects 'file'.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/fixtures/skills/valid-skill/SKILL.md",
+      "purpose": "Reference example of a fully valid skill — correct YAML frontmatter, kebab-case name, 3+ backtick-wrapped file references, verification section. Used as the positive test case in validate_skill.bats.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/fixtures/subagents/valid-subagent.md",
+      "purpose": "Reference example of a valid subagent with YAML frontmatter (name, description, model, allowedTools) and a substantive markdown body.",
+      "importance": "reference"
+    },
+    {
+      "path": "tests/fixtures/developer-answers.json",
+      "purpose": "Simulated Phase 2 developer interview output (project_purpose, deployment_target, never_do, common_mistakes, additional_context). No corresponding schema file exists.",
+      "importance": "reference"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Stage-mapped fixture directories",
+      "description": "Each fixture directory corresponds to one pipeline phase output: findings/ → Phase 1, synthesis/ → Phase 4. When adding a new agent, create its fixture at findings/{agent-name}.json. When adding a new synthesis pass, add synthesis/output-{pass-name}.json.",
+      "example_files": [
+        "tests/fixtures/findings/identity.json",
+        "tests/fixtures/synthesis/output-docs.json"
+      ]
+    },
+    {
+      "name": "Split synthesis fixtures for merge testing",
+      "description": "output-docs.json and output-tooling.json are intentionally separate — they have disjoint top-level keys. This design exercises the merge_synthesis_passes() function. Never pre-merge them manually; output.json is produced by the merge function itself and separately maintained as a fixture for merge phase tests.",
+      "example_files": [
+        "tests/fixtures/synthesis/output-docs.json",
+        "tests/fixtures/synthesis/output-tooling.json",
+        "tests/fixtures/synthesis/output.json"
+      ]
+    },
+    {
+      "name": "Positive + negative validation fixture pairs",
+      "description": "Validation test fixtures always come in pairs: one valid case and one or more targeted invalid cases. Each invalid case violates exactly one rule so tests can assert a specific error message. Current pairs: valid-skill + invalid-skill-no-desc + invalid-skill-angle-brackets; valid-subagent + invalid-subagent.",
+      "example_files": [
+        "tests/fixtures/skills/valid-skill/SKILL.md",
+        "tests/fixtures/skills/invalid-skill-no-desc/SKILL.md",
+        "tests/fixtures/skills/invalid-skill-angle-brackets/SKILL.md"
+      ]
+    },
+    {
+      "name": "Envelope wrapping for mock dispatch",
+      "description": "Integration tests never use fixture JSON raw. They always call make_claude_envelope(content, cost) which produces {is_error: false, total_cost_usd: <n>, structured_output: <content>}. The cost parameter is arbitrary but must be numeric. Synthesis passes use 5.00; agent calls use 0.05.",
+      "example_files": [
+        "tests/helpers/test_helper.bash",
+        "tests/integration/synthesize_phase.bats"
+      ]
+    },
+    {
+      "name": "Minimal but schema-valid content",
+      "description": "Each findings fixture contains 1-2 realistic examples per array — just enough to prove the structure is correct and that code doesn't crash on real data. This is intentional: faster tests, easier to read, and edge cases (empty arrays, large arrays) are covered by separate edge/ tests.",
+      "example_files": [
+        "tests/fixtures/findings/tooling.json",
+        "tests/fixtures/findings/docs-scanner.json"
+      ]
+    }
+  ],
+  "conventions": {
+    "naming": "findings fixtures: {agent-name}.json matching the agent's name exactly (e.g., git-forensics.json for the git-forensics agent). Synthesis fixtures: output-{pass}.json for pass outputs, output.json for merged. Skill fixtures: skills/{skill-name}/SKILL.md in a directory named after the case. Subagent fixtures: subagents/{name}.md flat.",
+    "imports": "No imports — all fixtures are static JSON or markdown. Tests load them via cp, cat, or direct path argument to validator scripts. Envelope wrapping uses make_claude_envelope() from tests/helpers/test_helper.bash.",
+    "error_handling": "Invalid fixture cases are structured to fail in exactly one targeted way. Each invalid fixture file name describes the violation (invalid-skill-no-desc, invalid-skill-angle-brackets, invalid-subagent). Tests assert specific error substrings from the validator's stderr/stdout.",
+    "other": [
+      "YAML frontmatter in skill/subagent fixtures must use valid YAML multiline syntax — validators recognize both folded (>) and literal (|) scalars for description fields.",
+      "The output.json merged fixture includes explicit padding lines in claude_md to pass the minimum-length validator (100+ lines). Do not remove them.",
+      "developer-answers.json has no corresponding schema file in schemas/ — it is freeform JSON with fixed keys."
+    ]
+  },
+  "dependencies": {
+    "internal": [
+      "tests/helpers/test_helper.bash (make_claude_envelope, setup)",
+      "tests/helpers/mock_claude.bash (dispatch dir matching by filename)",
+      "schemas/ (all .json schema files that findings fixtures must conform to)",
+      "scripts/validate-skill.sh (consumes skill fixture paths directly)",
+      "scripts/validate-subagent.sh (consumes subagent fixture paths directly)",
+      "lib/merge.sh (consumes synthesis/output.json structure)"
+    ],
+    "external_key": [
+      {
+        "name": "bats-core",
+        "purpose": "Test runner that loads fixtures in @setup blocks and asserts against them in @test blocks"
+      },
+      {
+        "name": "jq",
+        "purpose": "Used in tests to extract fields from fixture JSON for assertions"
+      }
+    ]
+  },
+  "gotchas": [
+    {
+      "issue": "git-forensics.json uses 'path' in hotspots/temporal_coupling/bug_fix_density/ownership_diffusion objects, but the schema (schemas/git-forensics.json) expects 'file'. Also missing 'example_messages' in commit_patterns.",
+      "solution": "Either update the fixture to match the schema field names, or update the schema to match the fixture — whichever reflects what real agents actually produce. Verify against a real claude -p call before changing."
+    },
+    {
+      "issue": "tooling.json omits the 'purpose' field that schemas/tooling.json requires for each tool entry.",
+      "solution": "Add a 'purpose' string to each tool object in the fixture, e.g., 'purpose': 'Linting'."
+    },
+    {
+      "issue": "output-docs.json and output-tooling.json must NOT be manually merged into output.json — they exist separately to test the merge function. output.json is independently maintained as the expected post-merge result.",
+      "solution": "When updating either pass fixture, also update output.json to match what merge_synthesis_passes() would produce from the new content."
+    },
+    {
+      "issue": "Integration tests require envelope wrapping — passing a raw fixture JSON to the mock will cause run_agent() to fail when it calls jq '.structured_output // .result // .' on the response.",
+      "solution": "Always use make_claude_envelope() from test_helper.bash when setting up mock dispatch files."
+    },
+    {
+      "issue": "The mock dispatch directory matches fixture files by filename — the file must be named exactly {agent-name}.json. A mismatch silently falls through to MOCK_CLAUDE_RESPONSE, which can mask the mismatch.",
+      "solution": "New agent fixture files must be named identically to the agent's name argument passed to run_agent()."
+    },
+    {
+      "issue": "The claude_md field in output-docs.json contains deliberate padding to exceed the 100-line minimum for CLAUDE.md validation. Editing the fixture to trim it will cause validate_claude_md tests to fail.",
+      "solution": "If you need to shorten the fixture for readability, keep the padding comment block intact or adjust the test's expected minimum threshold to match."
+    },
+    {
+      "issue": "skills/ fixtures use a directory-per-skill layout (skills/{name}/SKILL.md) while subagents/ uses flat files (subagents/{name}.md). These different layouts reflect how validate-skill.sh and validate-subagent.sh expect their input paths.",
+      "solution": "When adding a skill fixture, create a subdirectory. When adding a subagent fixture, place it flat."
+    },
+    {
+      "issue": "The envelopes/ and hooks/ directories are empty but intentionally present. Some CI or glob-based test discovery could emit warnings about empty directories.",
+      "solution": "Do not delete them — they are reserved for future fixture types. Add a .gitkeep if your tooling complains."
+    }
+  ],
+  "domain_terms": [
+    {
+      "term": "findings",
+      "meaning": "Raw JSON output from a Phase 1 gather agent, stored in .ultrainit/findings/{agent-name}.json. Each fixture in findings/ simulates this output."
+    },
+    {
+      "term": "envelope",
+      "meaning": "The wrapper object that real claude -p --output-format json returns: {is_error, total_cost_usd, structured_output}. Fixtures contain only the structured_output portion; tests wrap them via make_claude_envelope()."
+    },
+    {
+      "term": "dispatch directory",
+      "meaning": "A directory set via MOCK_CLAUDE_DISPATCH_DIR containing per-agent envelope files. The mock claude binary reads the matching file based on the agent name to simulate different responses per agent call."
+    },
+    {
+      "term": "synthesis pass",
+      "meaning": "One of two heavy claude -p calls in Phase 4. Pass 1 produces CLAUDE.md (output-docs.json), pass 2 produces skills/hooks/MCP (output-tooling.json). Both are merged into output.json."
+    },
+    {
+      "term": "validation fixture",
+      "meaning": "A skill or subagent markdown file used to test validate-skill.sh or validate-subagent.sh. Always comes in valid + targeted-invalid pairs."
+    },
+    {
+      "term": "structured_output",
+      "meaning": "The jq path .structured_output within a Claude API envelope — the actual typed JSON payload conforming to the --json-schema passed to claude -p."
+    }
+  ],
+  "skill_opportunities": [
+    {
+      "name": "add-agent-fixture",
+      "description": "Scaffolds a new findings fixture for a new gather agent: creates the JSON file from the schema, validates it against the schema, and adds the fixture to the mock dispatch setup in relevant test files.",
+      "workflow_steps": [
+        "Read the agent's schema from schemas/{agent-name}.json",
+        "Generate a minimal but realistic fixture JSON conforming to the schema",
+        "Write to tests/fixtures/findings/{agent-name}.json",
+        "Cross-check field names match schema (especially string vs enum fields)",
+        "Find all test files that set up dispatch directories and add the new fixture there"
+      ]
+    }
+  ]
+}

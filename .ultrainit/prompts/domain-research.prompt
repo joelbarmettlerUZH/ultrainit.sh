@@ -1,0 +1,14 @@
+Research the domain and tech stack for this project.
+Project: ultrainit — A shell-native tool that orchestrates multiple Claude Code subagents to deeply analyze any codebase and generate a complete Claude Code configuration (CLAUDE.md, skills, hooks, subagents, commands, MCP servers).
+Languages: Bash/Shell, JSON, Markdown
+Tech stack: bats-core, Docker
+Deployment: As a shell script hosted on github within a release artifact
+Additional context: We are not focused on speed but on quality. It is fine when an ultrainit run takes 60+ minutes and costs 100+ dollars, if you want something quick, use the native init command instead
+
+Research:
+1. Domain-specific terminology and concepts that map to code patterns
+2. Best practices for the specific framework VERSIONS detected (not generic advice)
+3. Common pitfalls developers encounter with this exact tech stack combination
+4. Architectural patterns common in this type of application
+
+Focus on version-specific, non-obvious information. Skip anything generic.

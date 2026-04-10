@@ -1,0 +1,274 @@
+{
+  "module_path": ".github/workflows/",
+  "purpose": "Three GitHub Actions workflows that cover the full CI/CD lifecycle: `test.yml` gates every push and PR with shell syntax checks and a Docker-containerized bats test suite; `docker-test-image.yml` rebuilds and publishes the pre-built test container to GHCR when `Dockerfile.test` changes; and `release.yml` bundles all source files into a single self-extracting script and publishes it as a GitHub Release on semver tags.",
+  "architecture": {
+    "overview": "The three workflows are deliberately isolated by trigger and responsibility. Each workflow has the minimum permissions needed (packages:read, packages:write, or contents:write). Tests use a pre-built Docker image (ghcr.io/joelbarmettleruzh/ultrainit-test:latest) that is only rebuilt when Dockerfile.test changes — decoupling test runtime from image build time. The test workflow has a two-job dependency chain (syntax → test) to fast-fail on syntax errors before spinning up the container. Release is triggered purely by semver tags and includes an explicit validation guard.",
+    "subdirectories": [
+      {
+        "path": ".github/workflows/",
+        "purpose": "All three workflow files live flat in this directory — no subdirectory structure.",
+        "key_files": [
+          "test.yml",
+          "docker-test-image.yml",
+          "release.yml"
+        ]
+      }
+    ],
+    "data_flow": "push/PR → test.yml: checkout → bash -n syntax check + jq schema validation (ubuntu-latest, no container) → if syntax passes: pull pre-built ghcr image → bats unit + scripts + edge (blocking) + integration (non-blocking, always runs). | Dockerfile.test change on main → docker-test-image.yml: checkout → docker login GHCR → build and push :latest tag. | v* tag push → release.yml: checkout → semver regex validation → apt install jq → bash bundle.sh > dist/ultrainit.sh → bash -n verify bundle → softprops/action-gh-release publishes dist/ultrainit.sh with auto-generated notes."
+  },
+  "key_files": [
+    {
+      "path": ".github/workflows/test.yml",
+      "purpose": "Main CI gate. Two-job pipeline: 'syntax' job runs bash -n on all .sh files (excluding test-repos/) and jq empty on all schemas/*.json; 'test' job (needs: syntax) runs bats against four test directories inside the pre-built container. Integration tests use 'if: always()' and '|| true' so they never block the pipeline.",
+      "importance": "critical"
+    },
+    {
+      "path": ".github/workflows/docker-test-image.yml",
+      "purpose": "Rebuilds ghcr.io/joelbarmettleruzh/ultrainit-test:latest and pushes it to GHCR. Only triggers on push to main when Dockerfile.test is modified. Uses docker/login-action@v3 and docker/build-push-action@v6.",
+      "importance": "important"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "purpose": "Triggered by v* tags. Validates tag is semver (regex), installs jq, runs bundle.sh to produce a single self-extracting dist/ultrainit.sh, syntax-checks it with bash -n, then uses softprops/action-gh-release@v2 to publish. Release body hardcodes the curl-pipe-bash install command.",
+      "importance": "critical"
+    },
+    {
+      "path": "Dockerfile.test",
+      "purpose": "Alpine-based (bash:5) image. Installs jq, bc, git, coreutils, grep, sed, gawk via apk. Clones bats-core v1.11.1 + bats-support/bats-assert/bats-file (latest HEAD). WORKDIR /workspace, ENTRYPOINT bats.",
+      "importance": "critical"
+    },
+    {
+      "path": "bundle.sh",
+      "purpose": "Produces the single-file distribution artifact. Uses unique per-file heredoc delimiters (__EOF_LIB_<name>__, __EOF_PROMPT_<name>__, etc.) to embed lib/*.sh, prompts/*.md, schemas/*.json, scripts/*.sh, and ultrainit.sh itself into a self-extracting bootstrap that mktemp-extracts to BUNDLE_DIR and exec's the main script.",
+      "importance": "critical"
+    },
+    {
+      "path": "Makefile",
+      "purpose": "Local development mirror of CI. test-unit/scripts/integration/edge/test-all all run docker run --rm -v $(CURDIR):/workspace $(TEST_IMAGE). test-image builds the image locally. bundle/check/smoke targets for local validation.",
+      "importance": "important"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Pre-built container for fast test iteration",
+      "description": "The bats test environment is published as a Docker image to GHCR and only rebuilt when Dockerfile.test changes. The test.yml job pulls it with GITHUB_TOKEN credentials (packages:read). This separates 'build the environment' from 'run the tests', keeping CI fast. Locally, 'make test-image' rebuilds it; in CI it's always pulled.",
+      "example_files": [
+        ".github/workflows/test.yml",
+        ".github/workflows/docker-test-image.yml",
+        "Dockerfile.test",
+        "Makefile"
+      ]
+    },
+    {
+      "name": "Two-job dependency chain for fast-fail",
+      "description": "test.yml splits into a 'syntax' job (lightweight, no container, fails fast on bash -n or bad JSON) and a 'test' job (needs: syntax) that only starts if syntax passes. This prevents wasting time pulling the Docker image when the code won't even parse.",
+      "example_files": [
+        ".github/workflows/test.yml"
+      ]
+    },
+    {
+      "name": "Non-blocking integration tests with always()",
+      "description": "Integration tests use 'if: always()' so they run even when unit tests fail, and '|| true' so they can never fail the job. This lets the team see integration results without blocking merges on flaky or incomplete integration coverage.",
+      "example_files": [
+        ".github/workflows/test.yml"
+      ]
+    },
+    {
+      "name": "Self-extracting single-file bundle distribution",
+      "description": "bundle.sh generates a single bash script by embedding all source files as heredoc blocks with unique per-file delimiters. The bundled script uses mktemp to extract to a temp dir, runs ultrainit.sh from there, and cleans up on EXIT via trap. release.yml calls 'bash bundle.sh > dist/ultrainit.sh', then 'bash -n dist/ultrainit.sh' to syntax-check before publishing.",
+      "example_files": [
+        "bundle.sh",
+        ".github/workflows/release.yml"
+      ]
+    },
+    {
+      "name": "Semver guard before release",
+      "description": "release.yml extracts the tag from GITHUB_REF and validates it against '^v[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.]+)?$'. If the regex fails it exits 1, blocking the release. The validated version is exported as VERSION env var (currently unused but available for future steps).",
+      "example_files": [
+        ".github/workflows/release.yml"
+      ]
+    },
+    {
+      "name": "Minimum-permission workflow scoping",
+      "description": "Each workflow declares only the permissions it needs: test.yml gets packages:read (to pull the container), docker-test-image.yml gets packages:write (to push), release.yml gets contents:write (to create a release). No workflow has broad permissions.",
+      "example_files": [
+        ".github/workflows/test.yml",
+        ".github/workflows/docker-test-image.yml",
+        ".github/workflows/release.yml"
+      ]
+    }
+  ],
+  "conventions": {
+    "naming": "Workflow file names use kebab-case and map to their trigger + purpose: test.yml (push/PR testing), docker-test-image.yml (Dockerfile.test change → image build), release.yml (v* tag → publish). Job names within files are lowercase single words (syntax, test, build, release). Step names use sentence case.",
+    "imports": "All actions are pinned to major version tags (actions/checkout@v4, docker/login-action@v3, docker/build-push-action@v6, softprops/action-gh-release@v2) rather than SHAs. GITHUB_TOKEN is used for both GHCR auth and release creation — no external secrets required.",
+    "error_handling": "Syntax errors in .sh or schemas/*.json cause the syntax job to fail, blocking the test job. Integration test failures are swallowed with '|| true'. The release workflow exits 1 on invalid semver. No retry logic or continue-on-error is used outside the integration test step.",
+    "other": [
+      "The syntax job excludes './test-repos/*' from the bash -n check to avoid scanning any cloned external repos used for smoke testing.",
+      "The 'test' job mounts the workspace via the container directive (not docker run), so actions/checkout@v4 inside the container job works correctly.",
+      "release.yml hardcodes the release body with the curl-pipe-bash install command — this must be kept in sync with the actual release artifact filename (ultrainit.sh).",
+      "bundle.sh is output-only (stdout); the caller (release.yml and Makefile) redirects it. This means bundle.sh must never write to stdout except the bundle content.",
+      "bats-support, bats-assert, and bats-file are pinned in Dockerfile.test to the latest HEAD at image build time (no version pin), while bats-core itself is pinned to v1.11.1."
+    ]
+  },
+  "dependencies": {
+    "internal": [
+      "Dockerfile.test",
+      "bundle.sh",
+      "Makefile",
+      "ultrainit.sh",
+      "lib/*.sh",
+      "prompts/*.md",
+      "schemas/*.json",
+      "scripts/*.sh",
+      "tests/unit/",
+      "tests/scripts/",
+      "tests/integration/",
+      "tests/edge/"
+    ],
+    "external_key": [
+      {
+        "name": "actions/checkout@v4",
+        "purpose": "Repository checkout in all three workflows"
+      },
+      {
+        "name": "docker/login-action@v3",
+        "purpose": "GHCR authentication in docker-test-image.yml"
+      },
+      {
+        "name": "docker/build-push-action@v6",
+        "purpose": "Build and push the test Docker image to GHCR"
+      },
+      {
+        "name": "softprops/action-gh-release@v2",
+        "purpose": "Create GitHub Release with dist/ultrainit.sh as attached asset and auto-generated notes"
+      },
+      {
+        "name": "ghcr.io/joelbarmettleruzh/ultrainit-test:latest",
+        "purpose": "Pre-built bats test environment (bash:5 + bats-core v1.11.1 + bats-support/assert/file + jq/bc/git/awk/sed)"
+      },
+      {
+        "name": "bats-core v1.11.1",
+        "purpose": "Bash test framework inside the Docker image"
+      },
+      {
+        "name": "GITHUB_TOKEN",
+        "purpose": "Used for GHCR pull (test), GHCR push (image build), and GitHub Release creation — no external secrets needed"
+      }
+    ]
+  },
+  "gotchas": [
+    {
+      "issue": "jq is installed in the syntax job via 'sudo apt-get install -y jq' on ubuntu-latest, but this is not cached — every CI run pays the apt install cost (~5-10s). The test container already has jq built in, so this only affects the syntax job.",
+      "solution": "Add 'cache: true' via setup-dependencies action, or consider moving schema validation into the test container job (accept that syntax and schema validation become sequential with tests)."
+    },
+    {
+      "issue": "Integration tests run with 'if: always()' and '|| true' — they always run and never fail the pipeline. A broken integration test will silently pass CI.",
+      "solution": "Check integration test results manually after any changes to gather.sh, synthesize.sh, or merge.sh. The '|| true' is intentional during early development but should be removed once integration coverage stabilizes."
+    },
+    {
+      "issue": "Action versions are pinned to major version tags (e.g., softprops/action-gh-release@v2), not to SHAs. A compromised or broken action update within that major version would silently affect all runs.",
+      "solution": "For supply-chain-sensitive steps (especially release.yml which has contents:write), pin to full SHAs. Run 'gh api repos/softprops/action-gh-release/git/refs/tags/v2' to get the current SHA."
+    },
+    {
+      "issue": "The bundle.sh delimiter strategy (__EOF_LIB_<name>__) will break if any embedded file contains the exact delimiter string as a line. This is unlikely but possible if someone names a variable with that pattern.",
+      "solution": "Before releasing, verify: grep '__EOF_LIB_' lib/*.sh — if any match, rename the delimiter in bundle.sh or the conflicting variable."
+    },
+    {
+      "issue": "bats-support, bats-assert, and bats-file in Dockerfile.test are cloned from HEAD with no version pin. A breaking change in those libraries would silently break all tests at the next image rebuild.",
+      "solution": "Pin these to specific tags or commit SHAs in Dockerfile.test (e.g., --branch v0.3.0 for bats-support)."
+    },
+    {
+      "issue": "The release.yml exports VERSION=$TAG but no subsequent step uses it. If a step needs to embed the version into the bundle (e.g., for 'ultrainit --version'), VERSION is available but not currently wired.",
+      "solution": "Pass VERSION to bundle.sh as an argument or env var if version embedding is needed: 'VERSION=$VERSION bash bundle.sh > dist/ultrainit.sh'."
+    },
+    {
+      "issue": "The syntax job excludes './test-repos/*' from bash -n, but if test-repos/ contains shell scripts with intentional bash-incompatible syntax (e.g., for testing), this exclusion is correct. However, it also means any broken sh files accidentally placed there go unchecked.",
+      "solution": "Document the test-repos/ exclusion rationale in a comment in test.yml."
+    }
+  ],
+  "domain_terms": [
+    {
+      "term": "bundle",
+      "meaning": "The single self-extracting ultrainit.sh file produced by bundle.sh, which embeds all lib/, prompts/, schemas/, and scripts/ files as heredoc blocks and is the primary distribution artifact published in GitHub Releases."
+    },
+    {
+      "term": "GHCR",
+      "meaning": "GitHub Container Registry (ghcr.io) — where the pre-built bats test image is stored and pulled from in CI."
+    },
+    {
+      "term": "bats",
+      "meaning": "Bash Automated Testing System (bats-core) — the test framework used for all unit, script, integration, and edge tests. Runs inside the Docker container."
+    },
+    {
+      "term": "dispatch mode",
+      "meaning": "The mock_claude.bash test helper mode where MOCK_CLAUDE_DISPATCH_DIR contains per-agent response files. Not directly visible in workflows but is the foundation for integration tests run via 'bats tests/integration/'."
+    },
+    {
+      "term": "syntax job",
+      "meaning": "The first job in test.yml that runs bash -n on all .sh files and jq empty on all schemas/*.json, without a container. Blocks the test job from starting if it fails."
+    }
+  ],
+  "skill_opportunities": [
+    {
+      "name": "release-ultrainit",
+      "description": "Guide the full release process: bump version, create and push a semver tag, monitor the release workflow, and verify the published dist/ultrainit.sh is correct.",
+      "workflow_steps": [
+        "Determine the next semver version (check recent tags with 'git tag --sort=-v:refname | head -5')",
+        "Verify all tests pass on main before tagging",
+        "Create and push the tag: git tag v<version> && git push origin v<version>",
+        "Monitor the release workflow via 'gh run list --workflow=release.yml'",
+        "Verify the release artifact: 'gh release view v<version>' and check dist/ultrainit.sh is attached",
+        "Smoke-test the published URL with the curl-pipe-bash command from the release body"
+      ]
+    },
+    {
+      "name": "rebuild-test-image",
+      "description": "Trigger or locally rebuild the bats test Docker image after changes to Dockerfile.test, bats pinned versions, or test helper dependencies.",
+      "workflow_steps": [
+        "Edit Dockerfile.test with the needed changes (e.g., pin bats-support to a specific tag)",
+        "Test locally: 'make test-image' then 'make test-all'",
+        "Push to main — docker-test-image.yml triggers automatically when Dockerfile.test changes",
+        "Monitor: 'gh run list --workflow=docker-test-image.yml'",
+        "Verify the new image is pulled correctly in the next test.yml run"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "make test-all",
+      "purpose": "Run all bats tests (unit, scripts, edge, integration) inside the pre-built Docker container"
+    },
+    {
+      "command": "make test-unit",
+      "purpose": "Run only tests/unit/ in Docker"
+    },
+    {
+      "command": "make test-image",
+      "purpose": "Build the test Docker image locally from Dockerfile.test"
+    },
+    {
+      "command": "make check",
+      "purpose": "Syntax-check all .sh files and validate all schemas/*.json (mirrors the CI syntax job)"
+    },
+    {
+      "command": "make bundle",
+      "purpose": "Run bundle.sh to produce dist/ultrainit.sh"
+    },
+    {
+      "command": "bash -n dist/ultrainit.sh",
+      "purpose": "Syntax-check the bundled output (mirrors the 'Verify bundle' step in release.yml)"
+    },
+    {
+      "command": "git tag v1.2.3 && git push origin v1.2.3",
+      "purpose": "Create and push a semver tag to trigger the release workflow"
+    },
+    {
+      "command": "gh run list --workflow=test.yml",
+      "purpose": "Check status of recent test workflow runs"
+    },
+    {
+      "command": "gh release view",
+      "purpose": "Inspect the latest published release and its attached ultrainit.sh artifact"
+    }
+  ]
+}

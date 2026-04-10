@@ -1,0 +1,187 @@
+{
+  "module_path": "tests/smoke/mini-project",
+  "purpose": "A minimal synthetic Flask REST API (todo CRUD) used as the target codebase for ultrainit's smoke-test pipeline runs. It exists to give the ultrainit tool a real — but tiny and fast — project to analyze, so the full gather→ask→research→synthesize→validate pipeline can be exercised in CI without spending significant API budget or time.",
+  "architecture": {
+    "overview": "Single-module Flask application with in-memory data storage. Three layers: HTTP routing (Flask decorators on functions in app.py), data management (module-level globals `todos` list and `next_id` counter), and a pytest test suite in a tests/ subdirectory. Deliberately flat — no packages, no config files, no ORM. The whole project is ~100 lines across 5 files.",
+    "subdirectories": [
+      {
+        "path": "tests/smoke/mini-project/",
+        "purpose": "Root of the mini-project. Contains the Flask application, dependency declaration, and developer documentation.",
+        "key_files": [
+          "app.py",
+          "requirements.txt",
+          "README.md",
+          ".gitignore"
+        ]
+      },
+      {
+        "path": "tests/smoke/mini-project/tests/",
+        "purpose": "Pytest test suite for the Flask app. Single test file covering happy paths and one error case.",
+        "key_files": [
+          "test_app.py"
+        ]
+      }
+    ],
+    "data_flow": "HTTP requests → Flask route functions in app.py → request.get_json() validation → read/write to module-level `todos` list and `next_id` counter → jsonify() response. Tests bypass HTTP entirely via Flask's test client fixture, exercising the same route functions in-process."
+  },
+  "key_files": [
+    {
+      "path": "tests/smoke/mini-project/app.py",
+      "purpose": "The entire Flask application: 3 routes (GET /todos, POST /todos, DELETE /todos/<id>), in-memory list storage, JSON request/response handling, and validation. Entry point when run directly (port 5000, debug=True).",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/smoke/mini-project/tests/test_app.py",
+      "purpose": "Pytest suite with 4 tests covering list-empty, create, create-missing-title (400 error), and delete. Uses a pytest fixture to get a Flask test client. These tests are what ultrainit's identity/commands agents discover as the project's test suite.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/smoke/mini-project/requirements.txt",
+      "purpose": "Pin file for the two dependencies: flask==3.0.0 and pytest==8.0.0. Smoke test setup (run-smoke.sh) installs from this file. Ultrainit's tooling agent reads it to identify the tech stack.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/smoke/mini-project/README.md",
+      "purpose": "User-facing docs: setup, test command, and API endpoint reference. The smoke harness validates that generated CLAUDE.md contains project-specific terms ('todo', 'flask', 'python', 'api') sourced from this file's domain vocabulary.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/smoke/mini-project/.gitignore",
+      "purpose": "Excludes .ultrainit/ so that ultrainit's own working-directory artifacts (findings, costs, logs) don't get committed when running smoke tests against this repo. Also excludes standard Python artifacts (__pycache__, *.pyc, .env).",
+      "importance": "reference"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Module-level mutable globals for state",
+      "description": "Both `todos = []` (app.py:5) and `next_id = 1` (app.py:6) are module-level globals mutated by route functions using the `global` keyword (lines 16, 28). This is a deliberate simplification — no database, no session, no class. Any modification to state requires declaring `global varname` inside the function.",
+      "example_files": [
+        "tests/smoke/mini-project/app.py"
+      ]
+    },
+    {
+      "name": "Fixture-based Flask test client",
+      "description": "The `client` pytest fixture (test_app.py:6-10) sets `app.config['TESTING'] = True` and yields `app.test_client()`. Because the fixture has default (function) scope, each test function gets a fresh client. However, the `todos` global in app.py is NOT reset between tests — test ordering matters. The delete test (line 32) relies on the create test having run first to assign ID 1.",
+      "example_files": [
+        "tests/smoke/mini-project/tests/test_app.py"
+      ]
+    },
+    {
+      "name": "Status-code-first response validation in tests",
+      "description": "Every test asserts `resp.status_code` before inspecting the body (200, 201, 400, 204). This makes failures immediately descriptive — you know at which HTTP layer the assertion failed before reading the JSON.",
+      "example_files": [
+        "tests/smoke/mini-project/tests/test_app.py"
+      ]
+    },
+    {
+      "name": "List-comprehension delete (no database)",
+      "description": "Deletion (app.py:29) is implemented as `todos = [t for t in todos if t['id'] != todo_id]`. Idempotent: deleting a non-existent ID silently returns 204 with no error. Intentional REST semantics for DELETE.",
+      "example_files": [
+        "tests/smoke/mini-project/app.py"
+      ]
+    },
+    {
+      "name": "Explicit HTTP method lists on decorators",
+      "description": "All routes declare `methods=[...]` explicitly (e.g., `methods=['GET']`), even when Flask defaults would work for GET-only routes. Makes the allowed methods unambiguous at a glance.",
+      "example_files": [
+        "tests/smoke/mini-project/app.py"
+      ]
+    }
+  ],
+  "conventions": {
+    "naming": "Snake_case for all Python identifiers. Route functions named after HTTP verb + resource: list_todos, create_todo, delete_todo. Test functions prefixed with test_ and named test_<action>_<condition>: test_create_todo_missing_title.",
+    "imports": "Standard library then third-party then internal, one import per concern. Flask symbols imported by name: `from flask import Flask, jsonify, request`. Tests import the app object directly: `from app import app`.",
+    "error_handling": "Validation at the route boundary only. POST /todos checks for missing 'title' key and returns `{'error': 'title is required'}, 400`. No try/except blocks — Flask's default error handling relied upon for unexpected errors. DELETE is intentionally permissive (no 404 on missing ID).",
+    "other": [
+      "Module-level docstrings on both source files",
+      "DELETE route returns empty string with 204 — no JSON body, matching REST semantics for No Content",
+      "debug=True hardcoded in __main__ block — appropriate for a demo/smoke-test target, not production",
+      "4-space indentation throughout, PEP 8 compliant",
+      "No type annotations, no logging, no config management — intentionally minimal"
+    ]
+  },
+  "dependencies": {
+    "internal": [],
+    "external_key": [
+      {
+        "name": "flask==3.0.0",
+        "purpose": "HTTP routing, request parsing (request.get_json()), and JSON response serialization (jsonify()). Also provides the test client used in pytest fixtures."
+      },
+      {
+        "name": "pytest==8.0.0",
+        "purpose": "Test runner and fixture system. The @pytest.fixture decorator and yield-based client setup are core to the test isolation strategy."
+      }
+    ]
+  },
+  "domain_terms": [
+    {
+      "term": "mini-project",
+      "meaning": "The synthetic 5-file Flask app used as ultrainit's smoke-test target. Not a real deployable service — exists purely to give ultrainit a realistic-feeling codebase to analyze during CI."
+    },
+    {
+      "term": "todo",
+      "meaning": "The domain entity: a dict with id (int), title (string), and done (bool). Stored in-memory as a Python list of dicts — no persistence."
+    },
+    {
+      "term": "smoke test",
+      "meaning": "In this repo's context, a full end-to-end run of ultrainit against the mini-project, validating that CLAUDE.md, skills, settings.json, and findings are generated correctly."
+    },
+    {
+      "term": "findings",
+      "meaning": "The JSON files written to .ultrainit/findings/ by each ultrainit gather-phase agent. The smoke test asserts at least 5 such files exist after a run."
+    },
+    {
+      "term": "test client",
+      "meaning": "Flask's built-in test HTTP client returned by app.test_client(). Used in pytest fixtures to make HTTP-like requests without starting a real server."
+    }
+  ],
+  "gotchas": [
+    {
+      "issue": "Global `todos` list is NOT reset between test functions — only the test client is re-created per fixture invocation. The delete test hardcodes ID=1, relying on the create test having run first in declaration order.",
+      "solution": "Tests must run in declaration order (pytest's default). If you add tests that create todos, they accumulate in the global list. To fix properly, add a yield-fixture that clears `todos` and resets `next_id` before each test."
+    },
+    {
+      "issue": "DELETE /todos/<id> returns 204 even when the ID doesn't exist — it never 404s. This can mask bugs where a todo was never actually created.",
+      "solution": "After a DELETE, follow up with GET /todos and assert the item is absent, rather than trusting the 204 status alone."
+    },
+    {
+      "issue": "The .ultrainit/ entry in .gitignore is load-bearing for the smoke test pipeline. Removing it would cause ultrainit's working directory to appear as untracked files in the ultrainit repo's git status during CI.",
+      "solution": "Never remove the .ultrainit/ entry. It exists because this project is a smoke-test target, not as a standard Python project concern."
+    },
+    {
+      "issue": "`from app import app` in tests/ uses a bare module name, relying on pytest adding the rootdir to sys.path implicitly (no conftest.py or pyproject.toml present).",
+      "solution": "If pytest ever fails to resolve `app`, add a conftest.py at mini-project/ root that inserts the parent directory into sys.path."
+    },
+    {
+      "issue": "requirements.txt pins exact versions (flask==3.0.0, pytest==8.0.0) with no upper bounds. These will grow stale but are intentional — the smoke test needs a stable, predictable target.",
+      "solution": "Do not update these versions unless smoke tests are failing due to genuine incompatibility. Stability is the point."
+    }
+  ],
+  "commands": [
+    {
+      "command": "pip install -r requirements.txt",
+      "purpose": "Install Flask and pytest dependencies"
+    },
+    {
+      "command": "python app.py",
+      "purpose": "Start the Flask dev server on port 5000 with debug mode"
+    },
+    {
+      "command": "python -m pytest tests/",
+      "purpose": "Run the 4-test pytest suite"
+    }
+  ],
+  "skill_opportunities": [
+    {
+      "name": "extend-mini-project",
+      "description": "When adding new routes, tests, or dependencies to the mini-project smoke target, this skill guides the developer through constraints: keep it minimal, update .gitignore if new artifact dirs are introduced, ensure the new code gives ultrainit's agents something interesting to detect.",
+      "workflow_steps": [
+        "Read existing app.py and test_app.py to understand current surface area",
+        "Add new route or feature that exercises a pattern ultrainit should detect",
+        "Add corresponding tests covering the new behavior",
+        "Update requirements.txt if new deps are introduced",
+        "Verify run-smoke.sh validation thresholds still pass (CLAUDE.md length, skill count, etc.)"
+      ]
+    }
+  ]
+}
