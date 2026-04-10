@@ -286,6 +286,8 @@ setup_work_dir() {
     # Add .ultrainit/ to .gitignore if not present
     if [[ -f "${target_dir}/.gitignore" ]]; then
         if ! grep -q '\.ultrainit' "${target_dir}/.gitignore" 2>/dev/null; then
+            # Ensure file ends with a newline before appending
+            [[ -s "${target_dir}/.gitignore" && "$(tail -c1 "${target_dir}/.gitignore")" != "" ]] && echo >> "${target_dir}/.gitignore"
             echo '.ultrainit/' >> "${target_dir}/.gitignore"
         fi
     else
