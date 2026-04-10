@@ -160,8 +160,14 @@ run_deep_dive_agents() {
             continue
         fi
 
+        # Write prompt to file to avoid shell quoting issues with special
+        # characters in dir_path, dir_role, or dir_desc from structure-scout
+        cat > "$WORK_DIR/prompts/module-${safe_name}.prompt" <<EOF
+Deeply analyze the directory at ${dir_path}/ in this project. This directory is classified as: ${dir_role}. Brief context: ${dir_desc}. Produce an exhaustive analysis covering: architecture and internal organization, key files (read at least 5-10 files), coding patterns with examples, conventions, dependencies, gotchas, and skill opportunities. Be thorough — read actual source files, not just directory listings.
+EOF
+
         module_calls+=("run_agent module-${safe_name} \
-            'Deeply analyze the directory at ${dir_path}/ in this project. This directory is classified as: ${dir_role}. Brief context: ${dir_desc}. Produce an exhaustive analysis covering: architecture and internal organization, key files (read at least 5-10 files), coding patterns with examples, conventions, dependencies, gotchas, and skill opportunities. Be thorough — read actual source files, not just directory listings.' \
+            '@$WORK_DIR/prompts/module-${safe_name}.prompt' \
             '$schemas/module-analysis.json' \
             'Read,Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(wc:*),Bash(ls:*),Glob' \
             $AGENT_MODEL")
@@ -243,8 +249,12 @@ run_fallback_module_analyzers() {
         safe_name=$(echo "$rel_name" | sed 's|/|-|g; s|\.|-|g; s| ||g; s|^-||; s|-$||')
         [[ -z "$safe_name" ]] && safe_name="root"
 
+        cat > "$WORK_DIR/prompts/module-${safe_name}.prompt" <<EOF
+Deeply analyze the directory at ${rel_name}/ in this project. Produce an exhaustive analysis covering: architecture, key files, patterns, conventions, dependencies, gotchas, and skill opportunities.
+EOF
+
         module_calls+=("run_agent module-${safe_name} \
-            'Deeply analyze the directory at ${rel_name}/ in this project. Produce an exhaustive analysis covering: architecture, key files, patterns, conventions, dependencies, gotchas, and skill opportunities.' \
+            '@$WORK_DIR/prompts/module-${safe_name}.prompt' \
             '$schemas/module-analysis.json' \
             'Read,Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(wc:*),Bash(ls:*),Glob' \
             $AGENT_MODEL")
