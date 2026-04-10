@@ -21,7 +21,7 @@ _common_setup() {
     export TEST_TMPDIR="$(mktemp -d)"
     export WORK_DIR="$TEST_TMPDIR/workdir"
     export TARGET_DIR="$TEST_TMPDIR/target"
-    mkdir -p "$WORK_DIR"/{findings/modules,synthesis/skills,synthesis/hooks,synthesis/subagents,logs,backups,costs}
+    mkdir -p "$WORK_DIR"/{findings/modules,synthesis/skills,synthesis/hooks,synthesis/subagents,logs,backups,costs,prompts}
     mkdir -p "$TARGET_DIR"
     echo '{}' > "$WORK_DIR/state.json"
 

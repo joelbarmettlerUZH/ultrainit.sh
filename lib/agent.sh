@@ -34,6 +34,17 @@ run_agent() {
     local phase="${6:-${AGENT_PHASE:-gather}}"
     local output_file="$WORK_DIR/findings/${name}.json"
 
+    # Support @file syntax: read prompt from file to avoid shell quoting
+    # issues when prompts contain apostrophes, parentheses, backticks, etc.
+    if [[ "$prompt" == @* ]]; then
+        local prompt_file="${prompt#@}"
+        if [[ ! -f "$prompt_file" ]]; then
+            log_error "Prompt file not found: $prompt_file"
+            return 1
+        fi
+        prompt=$(cat "$prompt_file")
+    fi
+
     # Resumability: skip if findings exist
     if [[ -f "$output_file" ]] && [[ "$FORCE" != "true" ]]; then
         log_info "Skipping $name (findings exist). Use --force to rerun."
