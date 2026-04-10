@@ -1,0 +1,203 @@
+{
+  "patterns": [
+    {
+      "name": "Pipeline Orchestrator Pattern",
+      "type": "architecture",
+      "evidence_files": [
+        "ultrainit.sh",
+        "lib/gather.sh",
+        "lib/ask.sh",
+        "lib/research.sh",
+        "lib/synthesize.sh",
+        "lib/validate.sh",
+        "lib/merge.sh"
+      ],
+      "description": "Five discrete phases (Gather → Ask → Research → Synthesize → Validate/Write) each implemented as a single function in its own lib/ file. The main orchestrator (ultrainit.sh lines 139-176) calls each phase function in sequence. Phases are independent, communicate via files in .ultrainit/, and use a shared state.json to mark completion. This enables resumability: each phase guards with `if is_phase_complete \"phase\" && [[ \"$FORCE\" != \"true\" ]]; then return 0; fi` (gather.sh:7, synthesize.sh:16, ask.sh:28).",
+      "is_consistent": true
+    },
+    {
+      "name": "Agent Runner Abstraction",
+      "type": "architecture",
+      "evidence_files": [
+        "lib/agent.sh"
+      ],
+      "description": "All Claude invocations funnel through a single `run_agent <name> <prompt> <schema_file> <allowed_tools> [model] [phase]` function (agent.sh:28-163). It handles: resumability (skip if findings exist), budget enforcement, system prompt file injection, large-prompt stdin piping (>100KB), response envelope validation, cost recording, and structured output extraction. No caller invokes `claude -p` directly.",
+      "is_consistent": true
+    },
+    {
+      "name": "Two-Pass Synthesis",
+      "type": "architecture",
+      "evidence_files": [
+        "lib/synthesize.sh",
+        "prompts/synthesizer-docs.md",
+        "prompts/synthesizer-tooling.md"
+      ],
+      "description": "Synthesis is split into two sequential large-context passes (synthesize.sh:21-76). Pass 1 (Docs) receives all raw findings and produces CLAUDE.md files. Pass 2 (Tooling) receives the generated CLAUDE.md from Pass 1 as its source of truth and produces skills/hooks/subagents. Sequential because Pass 2 depends on Pass 1 output. Findings are filtered per pass via `build_docs_context` and `build_tooling_context` to extract only relevant fields.",
+      "is_consistent": true
+    },
+    {
+      "name": "Tiered Error Tolerance",
+      "type": "error_handling",
+      "evidence_files": [
+        "lib/gather.sh",
+        "lib/agent.sh",
+        "lib/validate.sh",
+        "lib/synthesize.sh"
+      ],
+      "description": "Three failure tiers: (1) Critical failures (identity or structure-scout agent missing, or ≥3 of 8 core agents failed) abort the phase (gather.sh:85-102). (2) Non-critical failures (individual deep-dive agents, research agents) log a warning and continue. (3) Synthesis failures retry up to `$ULTRAINIT_MAX_RETRIES` times with a 10-second sleep before aborting (synthesize.sh:319-361). Validation failures trigger an automatic revision agent rather than hard failure (validate.sh:115-122).",
+      "is_consistent": true
+    },
+    {
+      "name": "set -euo pipefail at Script Boundaries",
+      "type": "error_handling",
+      "evidence_files": [
+        "ultrainit.sh",
+        "lib/agent.sh",
+        "scripts/validate-skill.sh",
+        "scripts/validate-subagent.sh"
+      ],
+      "description": "`set -euo pipefail` appears at the top of all top-level scripts (ultrainit.sh:2, scripts/validate-skill.sh, scripts/validate-subagent.sh) and in every generated parallel-agent temp script (agent.sh:192-195). Functions use explicit `return 0/1` and capture exit codes with `local exit_code=$?` (agent.sh:110). Error messages go to stderr via `>&2` (utils.sh:20). Tests intentionally omit this to allow capturing non-zero exits.",
+      "is_consistent": true
+    },
+    {
+      "name": "Diagnostic Logging via Claude",
+      "type": "error_handling",
+      "evidence_files": [
+        "lib/agent.sh"
+      ],
+      "description": "On phase failure, `diagnose_phase_failure` (agent.sh:244-312) collects the last 50 lines of each failed agent's stderr log file, then makes a low-cost `claude -p` call (haiku, max $0.05) to interpret the errors and suggest fixes. Falls back to printing raw logs if Claude itself is unavailable. Agent stderr is always captured to `$WORK_DIR/logs/{name}.stderr` (agent.sh:77).",
+      "is_consistent": true
+    },
+    {
+      "name": "Global Exported Variables as Configuration",
+      "type": "configuration",
+      "evidence_files": [
+        "lib/config.sh",
+        "ultrainit.sh",
+        "lib/agent.sh"
+      ],
+      "description": "All runtime configuration lives in exported global variables: SCRIPT_DIR, TARGET_DIR, WORK_DIR, FORCE, NON_INTERACTIVE, VERBOSE, DRY_RUN, AGENT_MODEL, SYNTH_MODEL, TOTAL_BUDGET, GATHER_BUDGET, AGENT_BUDGET, AGENT_PHASE, etc. Defaults set in config.sh using `${VAR:-default}` syntax (config.sh:6-16). CLI argument parsing in ultrainit.sh (lines 80-98) overrides defaults. Environment variables (ULTRAINIT_MODEL, ULTRAINIT_BUDGET) are a secondary override layer.",
+      "is_consistent": true
+    },
+    {
+      "name": "Explicit Variable Propagation to Subprocesses",
+      "type": "configuration",
+      "evidence_files": [
+        "lib/agent.sh"
+      ],
+      "description": "Parallel agents run as child bash processes that re-source lib/config.sh, which would clobber computed values. To prevent this, `run_agents_parallel` writes a temp script per agent (agent.sh:191-211) that hard-bakes current variable values as `export VAR=\"$VAR\"` literals before sourcing libs. This is explicitly documented in a comment: 'Propagate parent state explicitly; these literal values are baked in'.",
+      "is_consistent": true
+    },
+    {
+      "name": "JSON State File for Phase Tracking",
+      "type": "state_management",
+      "evidence_files": [
+        "lib/utils.sh"
+      ],
+      "description": "`$WORK_DIR/state.json` tracks phase completion as `{ \"gather\": \"<ISO timestamp>\", \"synthesize\": \"...\", ... }`. `mark_phase_complete` (utils.sh:26-39) writes atomically with null-safety: re-initializes to `{}` if file is corrupt, validates with `jq empty` before overwriting. `is_phase_complete` (utils.sh:42-49) uses `jq -e` to return a boolean. All phase functions check this before executing.",
+      "is_consistent": true
+    },
+    {
+      "name": "Per-Agent Cost Files to Prevent Race Conditions",
+      "type": "state_management",
+      "evidence_files": [
+        "lib/agent.sh",
+        "lib/config.sh"
+      ],
+      "description": "Each agent writes its cost to its own file: `$WORK_DIR/costs/{agent-name}.cost` (agent.sh:9-16), format: `phase|agent|cost`. Because parallel agents run simultaneously, using a shared file would cause race conditions. `check_budget` (config.sh:88-108) aggregates all `.cost` files via `awk -F'|' '{ sum += $3 }'` and compares against `TOTAL_BUDGET` using `bc` for floating-point arithmetic.",
+      "is_consistent": true
+    },
+    {
+      "name": "snake_case Function Naming with Semantic Prefixes",
+      "type": "naming",
+      "evidence_files": [
+        "lib/utils.sh",
+        "lib/agent.sh",
+        "lib/config.sh",
+        "lib/gather.sh",
+        "lib/validate.sh"
+      ],
+      "description": "All functions use snake_case. Prefixes are semantically consistent across the entire codebase: `log_*` (logging), `run_*` (execution), `is_*` (boolean checks), `mark_*` (state mutation), `json_*` (JSON utilities), `validate_*` (validation), `build_*` (context builders), `write_*` (file I/O), `merge_*` (merging), `check_*` (precondition checks), `compute_*` (calculations), `estimate_*` (estimation), `setup_*` (initialization), `get_*` (retrieval), `diagnose_*` (error analysis), `backup_*` (file backup). No CamelCase anywhere.",
+      "is_consistent": true
+    },
+    {
+      "name": "kebab-case for Agent/Artifact Names",
+      "type": "naming",
+      "evidence_files": [
+        "schemas/",
+        "prompts/",
+        "lib/gather.sh",
+        "scripts/validate-skill.sh"
+      ],
+      "description": "All agent names, schema files, and prompt files use kebab-case: `git-forensics.json`, `docs-scanner.md`, `structure-scout.json`, `domain-researcher.md`, `mcp-discoverer.md`. The skill validator (validate-skill.sh) enforces kebab-case for skill names as part of its frontmatter checks. This convention also applies to generated artifact filenames.",
+      "is_consistent": true
+    },
+    {
+      "name": "BATS Test Framework with PATH-Based Mock",
+      "type": "testing",
+      "evidence_files": [
+        "tests/helpers/test_helper.bash",
+        "tests/helpers/mock_claude.bash",
+        "tests/unit/agent_run.bats",
+        "tests/unit/config_budget.bats",
+        "Dockerfile.test"
+      ],
+      "description": "Tests use bats-core running inside Docker for isolation (Dockerfile.test). No real Claude calls are made. A mock `claude` binary is written to a temp directory prepended to `$PATH` (mock_claude.bash:18-104). The mock supports three modes: single response (MOCK_CLAUDE_RESPONSE), per-agent dispatch (MOCK_CLAUDE_DISPATCH_DIR maps agent name to response file), and controlled exit codes (MOCK_CLAUDE_EXIT_CODE). All invocations are logged to MOCK_CLAUDE_LOG for assertions.",
+      "is_consistent": true
+    },
+    {
+      "name": "Fixture-Based Testing with Envelope Helper",
+      "type": "testing",
+      "evidence_files": [
+        "tests/helpers/test_helper.bash",
+        "tests/fixtures/",
+        "tests/unit/agent_run.bats"
+      ],
+      "description": "Realistic JSON fixtures for all agent types live in `tests/fixtures/findings/` and `tests/fixtures/synthesis/`. The `make_claude_envelope` helper (test_helper.bash:81-89) wraps structured output into the real `claude -p --output-format json` response format: `{is_error, total_cost_usd, structured_output}`. Tests set up responses with `make_claude_envelope '{...}' '0.42' > \"$MOCK_CLAUDE_RESPONSE\"` before calling functions under test.",
+      "is_consistent": true
+    },
+    {
+      "name": "Co-located Test File Organization by Layer",
+      "type": "testing",
+      "evidence_files": [
+        "tests/unit/",
+        "tests/integration/",
+        "tests/scripts/",
+        "tests/edge/"
+      ],
+      "description": "Tests are organized into separate directories by layer, not by feature: `tests/unit/` (individual functions), `tests/scripts/` (standalone validator scripts), `tests/integration/` (phase-level and full pipeline), `tests/edge/` (budget exhaustion, CLI args). Each unit test file maps 1:1 to a lib/ file (e.g., `config_budget.bats` tests `lib/config.sh` budget functions, `agent_run.bats` tests `run_agent` in `lib/agent.sh`).",
+      "is_consistent": true
+    },
+    {
+      "name": "Null-Safe jq Operations Throughout",
+      "type": "other",
+      "evidence_files": [
+        "lib/utils.sh",
+        "lib/synthesize.sh",
+        "lib/merge.sh",
+        "lib/agent.sh"
+      ],
+      "description": "Every jq expression that reads optional fields uses `// empty`, `// []`, or `// {}` fallbacks. Examples: `jq -r \"$key // empty\" \"$file\" 2>/dev/null || echo \"\"` (utils.sh:57), `.directories[] | select(.priority == \"high\" or .priority == \"medium\")` with `2>/dev/null` guards (synthesize.sh:125), `.settings_hooks[$i].matcher // empty` (merge.sh:195). This guards against Claude returning partial or missing fields in structured output.",
+      "is_consistent": true
+    },
+    {
+      "name": "TTY-Aware Logging with Color Codes",
+      "type": "other",
+      "evidence_files": [
+        "lib/utils.sh"
+      ],
+      "description": "Color escape codes are conditionally defined at source time: `if [[ -t 1 ]]; then RED='\\033[0;31m' ...; else RED='' ...; fi` (utils.sh:4-14). This means CI/pipe output is clean text, terminal output is colored. A spinner (`spin` function) only activates in interactive TTYs. Tests explicitly export empty color variables to keep assertion output clean.",
+      "is_consistent": true
+    },
+    {
+      "name": "Atomic File Writes via Temp Files",
+      "type": "other",
+      "evidence_files": [
+        "lib/agent.sh",
+        "lib/synthesize.sh"
+      ],
+      "description": "Writes to important output files go through a `.tmp` intermediate: write to `${output_file}.tmp`, then `mv \"$tmp_file\" \"$output_file\"` (synthesize.sh:400). `mktemp` with a template (e.g., `mktemp -d \"${TMPDIR:-/tmp}/ultrainit-agents.XXXXXX\"`) is used for temp directories (agent.sh:178), with explicit `rm -rf \"$tmp_dir\"` cleanup after use.",
+      "is_consistent": true
+    }
+  ]
+}

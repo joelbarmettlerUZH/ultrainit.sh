@@ -1,0 +1,351 @@
+{
+  "module_path": "tests/unit/",
+  "purpose": "Bats-core unit test suite for individual shell functions across all lib/*.sh modules. Each .bats file targets a specific subsystem (budget, agent execution, merging, synthesis, validation, utils), using a shared mock `claude` binary to avoid real API calls and a common setup helper that creates isolated per-test tmpdirs with the full working directory structure.",
+  "architecture": {
+    "overview": "Flat directory of 11 .bats files, each mapping to a specific lib/*.sh subsystem or standalone script. Tests share infrastructure via two helper files: test_helper.bash (env defaults, lib sourcing, fixture utilities) and mock_claude.bash (PATH-intercept mock binary). All tests use bats-support, bats-assert, and bats-file assertion libraries. The design enforces per-test isolation via mktemp tmpdirs and full lib re-sourcing on every setup().",
+    "subdirectories": [
+      {
+        "path": "tests/unit/",
+        "purpose": "All unit test files — one .bats file per subsystem being tested",
+        "key_files": [
+          "agent_run.bats",
+          "agent_parallel.bats",
+          "agent_helpers.bats",
+          "agent_prompt_file.bats",
+          "config_budget.bats",
+          "config_workdir.bats",
+          "merge.bats",
+          "synthesize_helpers.bats",
+          "utils.bats",
+          "validate_claude_md.bats",
+          "validate_hook.bats"
+        ]
+      },
+      {
+        "path": "tests/helpers/",
+        "purpose": "Shared test infrastructure loaded by all unit tests",
+        "key_files": [
+          "test_helper.bash",
+          "mock_claude.bash"
+        ]
+      },
+      {
+        "path": "tests/fixtures/",
+        "purpose": "Realistic JSON and Markdown fixtures used as pre-canned agent responses and validation inputs",
+        "key_files": [
+          "findings/identity.json",
+          "findings/commands.json",
+          "synthesis/output.json",
+          "synthesis/output-docs.json",
+          "synthesis/output-tooling.json",
+          "developer-answers.json"
+        ]
+      }
+    ],
+    "data_flow": "Each test: (1) _common_setup creates $TEST_TMPDIR with full workdir skeleton and sources all lib/*.sh in dependency order. (2) setup_mock_claude prepends $MOCK_BIN_DIR to $PATH so the mock intercepts all claude invocations. (3) MOCK_CLAUDE_RESPONSE or MOCK_CLAUDE_DISPATCH_DIR controls what the mock returns. (4) The function under test is called directly (it's already sourced). (5) bats `run` captures stdout+exit code. (6) bats-assert assertions verify outcomes. (7) _common_teardown rm -rfs the entire tmpdir."
+  },
+  "key_files": [
+    {
+      "path": "tests/helpers/test_helper.bash",
+      "purpose": "Core test infrastructure: discovers PROJECT_ROOT, creates per-test tmpdir with the full .ultrainit/ skeleton (findings/, synthesis/, logs/, costs/, backups/), exports all env defaults (FORCE, VERBOSE, TOTAL_BUDGET, model names, color codes), sources all lib/*.sh in dependency order, and provides _common_setup/_common_teardown, use_fixture(), and make_claude_envelope().",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/helpers/mock_claude.bash",
+      "purpose": "Creates a mock `claude` binary placed at front of $PATH. Supports three modes: simple (MOCK_CLAUDE_RESPONSE file), dispatch (MOCK_CLAUDE_DISPATCH_DIR with per-agent-name .json files), and error (MOCK_CLAUDE_EXIT_CODE). Logs every invocation to MOCK_CLAUDE_LOG. Handles `claude auth status` specially. Tracks stdin piping.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/unit/agent_run.bats",
+      "purpose": "Tests run_agent(): structured output written to findings/, cost extraction + cost file written, resumability (skip when findings exist, rerun with FORCE=true), budget enforcement (agent rejected when over budget), error handling (non-zero exit, is_error=true envelope), model and tool args forwarded, large prompt stdin piping.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/unit/agent_parallel.bats",
+      "purpose": "Tests run_agents_parallel(): all agents run, env vars baked into child scripts, failure count returned, temp dir cleaned up, special characters in prompts survive fork-and-exec, per-agent stderr isolated.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/unit/config_budget.bats",
+      "purpose": "Tests the entire budget subsystem: compute_budgets() splits TOTAL_BUDGET into phase budgets (50/10/30/10%), set_agent_budget() divides phase budget by agent count, check_budget() rejects when total costs meet or exceed TOTAL_BUDGET, get_remaining_budget() returns correct remainder, check_budget_sanity() warns on low budgets.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/unit/merge.bats",
+      "purpose": "Tests artifact writing: merge_settings() deep-merges generated hooks into existing .claude/settings.json, write_mcp_config() writes MCP JSON, backup_existing() copies CLAUDE.md and settings.json to timestamped backup dir, write_artifacts() respects DRY_RUN and never overwrites existing skills/hooks/subagents.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/unit/validate_claude_md.bats",
+      "purpose": "Tests CLAUDE.md validation rules: minimum 100 lines, zero generic phrases (best practices, clean code, etc.), must contain fenced code blocks or markdown tables, every 'Never X' prohibition must be paired with an 'Instead' alternative.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/unit/validate_hook.bats",
+      "purpose": "Tests hook script validation: must have #!/usr/bin/env bash shebang, must have set -euo pipefail, must read JSON from stdin (via jq, read, or /dev/stdin), blocking hooks use exit 2, settings.json wiring must reference the hook file.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/unit/synthesize_helpers.bats",
+      "purpose": "Tests synthesis pass helpers: estimate_tokens() approximates token count from text, build_docs_context() assembles all findings JSON into synthesis prompt, build_tooling_context() assembles pass-2 context, merge_synthesis_passes() merges output-docs.json + output-tooling.json into output.json, postprocess_descriptions() strips angle-bracket placeholders.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/unit/agent_prompt_file.bats",
+      "purpose": "Tests @file prompt syntax: apostrophes, parentheses, backticks, dollar signs, newlines all survive when prompt is passed as @/path/to/file rather than inline CLI arg. Also tests that missing @file path fails cleanly.",
+      "importance": "reference"
+    },
+    {
+      "path": "tests/unit/utils.bats",
+      "purpose": "Tests utility functions: json_get() extracts keys from JSON files, json_merge() merges two JSON objects (second wins on conflict), mark_phase_complete() updates state.json, is_phase_complete() reads state.json, print_cost_summary() sums cost files and formats output.",
+      "importance": "reference"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Arrange-Act-Assert with bats `run`",
+      "description": "Every test arranges state (write files, set env vars), then calls `run <function>` which captures stdout and exit code without failing the test, then asserts with assert_success/assert_failure/assert_output/assert_file_exists. The `run` wrapper is required for any command whose exit code you want to check — direct invocation would abort the test on non-zero exit.",
+      "example_files": [
+        "tests/unit/agent_run.bats",
+        "tests/unit/config_budget.bats",
+        "tests/unit/merge.bats"
+      ]
+    },
+    {
+      "name": "Mock Claude Response Envelope",
+      "description": "All tests that exercise functions calling `claude -p` must produce a response file matching the real claude --output-format json envelope: `{\"is_error\": false, \"total_cost_usd\": 0.42, \"structured_output\": {...}}`. The make_claude_envelope helper accepts (json_payload, cost, [is_error]) and writes this envelope. Error envelopes have `is_error: true` and optionally `errors: [{\"message\": \"...\"}]`. The mock binary returns the file contents verbatim.",
+      "example_files": [
+        "tests/helpers/test_helper.bash",
+        "tests/helpers/mock_claude.bash",
+        "tests/unit/agent_run.bats"
+      ]
+    },
+    {
+      "name": "Dispatch Mode for Multi-Agent Tests",
+      "description": "When a test exercises code that spawns multiple named agents, create $MOCK_CLAUDE_DISPATCH_DIR and populate it with per-agent response files named exactly as the agent (e.g., identity.json, commands.json). The mock binary extracts the agent name from the --json-schema argument path basename (stripping .json) and routes to the matching dispatch file. Falls back to MOCK_CLAUDE_RESPONSE if no match.",
+      "example_files": [
+        "tests/helpers/mock_claude.bash",
+        "tests/unit/agent_parallel.bats"
+      ]
+    },
+    {
+      "name": "Full Lib Sourcing in _common_setup",
+      "description": "test_helper.bash sources ALL lib/*.sh files in dependency order on every test setup, not just the lib being tested. This is intentional: it catches inter-lib bugs (e.g., synthesize.sh sets nullglob which would affect subsequent glob patterns in config.sh if sourced alone). Never source a single lib in isolation — always call _common_setup first.",
+      "example_files": [
+        "tests/helpers/test_helper.bash"
+      ]
+    },
+    {
+      "name": "Per-Test tmpdir Isolation",
+      "description": "_common_setup calls mktemp -d to create a unique TEST_TMPDIR for every test. WORK_DIR and TARGET_DIR are subdirectories within it. _common_teardown rm -rfs the entire tmpdir. This means no cleanup code is needed inside @test bodies — every test starts with a clean slate and leaves nothing behind.",
+      "example_files": [
+        "tests/helpers/test_helper.bash",
+        "tests/unit/config_workdir.bats"
+      ]
+    },
+    {
+      "name": "Cost File Aggregation Testing",
+      "description": "Budget tests write one-line cost files to $WORK_DIR/costs/ (format: `phase|agent_name|cost_usd`) and then call check_budget() or get_remaining_budget(). Multiple cost files are written with >> appending to simulate multiple agents having run. Tests verify exact decimal string output (bc produces strings like '5.00', not floats).",
+      "example_files": [
+        "tests/unit/config_budget.bats",
+        "tests/unit/agent_helpers.bats"
+      ]
+    },
+    {
+      "name": "Section Headers as Non-Test Groupings",
+      "description": "Inside .bats files, logical groups of related tests are separated by `@test \"──── Category Name ────\"` markers that contain only a `: # no-op` body. These are not real tests — they act as visual separators in the bats output. Don't add assertions to these separator tests.",
+      "example_files": [
+        "tests/unit/agent_run.bats",
+        "tests/unit/config_budget.bats"
+      ]
+    }
+  ],
+  "conventions": {
+    "naming": "Test files: <subsystem>.bats matching the lib or topic (config_budget.bats → lib/config.sh budget functions). Test names: plain English describing what is exercised and what should happen ('run_agent writes structured output to findings file'). Section separators use em-dash-padded headers ('──── Resumability ────'). Fixture files mirror the agent name they represent (findings/identity.json for the identity agent).",
+    "imports": "Every .bats file loads helpers with `load '../helpers/test_helper'` then calls `_common_setup`. Mock is loaded separately: `load '../helpers/mock_claude'` then `setup_mock_claude`. bats-support, bats-assert, and bats-file are loaded inside test_helper.bash from /usr/local/lib/bats-*/load.bash (Docker image paths). Never load bats libs directly in test files.",
+    "error_handling": "Tests verify both success and failure paths. For error paths: set MOCK_CLAUDE_EXIT_CODE=1 for process failures, or produce an is_error=true envelope for API-level errors. After a failing `run`, assert_failure checks exit code and assert_output --partial checks the error message. Stderr captured in agent tests is verified by reading $WORK_DIR/logs/<name>.stderr directly with `run cat`.",
+    "other": [
+      "bc decimal arithmetic: always compare budget strings with exact equality (e.g., '5.00'), never numeric. bc with scale=2 can omit leading zero ('.33' not '0.33') — tests must account for this.",
+      "Parallel child scripts bake in env var values as literals at generation time — don't expect dynamic changes to propagate to parallel agents after run_agents_parallel starts.",
+      "@file prompt syntax always uses absolute paths — relative paths won't resolve in child script context.",
+      "DRY_RUN=true must be tested explicitly for write functions (merge.bats) — the flag suppresses all writes and the assertions verify no files were created.",
+      "Fixture CLAUDE.md content must be ≥100 lines to pass validation tests — short synthetic content will fail the minimum-length check.",
+      "ULTRAINIT_MAX_RETRIES=1 is set in test environments (via test_helper) to prevent synthesis retry delays."
+    ]
+  },
+  "dependencies": {
+    "internal": [
+      "lib/utils.sh — json_get, json_merge, mark_phase_complete, is_phase_complete, print_cost_summary",
+      "lib/config.sh — compute_budgets, set_agent_budget, check_budget, get_remaining_budget, setup_work_dir",
+      "lib/agent.sh — run_agent, run_agents_parallel, record_cost, get_failed_agents, diagnose_phase_failure",
+      "lib/synthesize.sh — estimate_tokens, build_docs_context, build_tooling_context, merge_synthesis_passes, postprocess_descriptions",
+      "lib/validate.sh — validate_claude_md, validate_hook, validate_hook_wiring",
+      "lib/merge.sh — merge_settings, write_mcp_config, backup_existing, write_artifacts",
+      "scripts/validate-skill.sh — tested by tests/scripts/validate_skill.bats (not unit/)",
+      "scripts/validate-subagent.sh — tested by tests/scripts/validate_subagent.bats (not unit/)",
+      "tests/fixtures/ — pre-canned JSON and markdown for agent responses"
+    ],
+    "external_key": [
+      {
+        "name": "bats-core",
+        "purpose": "Test runner — provides @test blocks, setup/teardown lifecycle, run wrapper"
+      },
+      {
+        "name": "bats-support",
+        "purpose": "Base assertion library depended on by bats-assert"
+      },
+      {
+        "name": "bats-assert",
+        "purpose": "assert_success, assert_failure, assert_output, refute_output assertions"
+      },
+      {
+        "name": "bats-file",
+        "purpose": "assert_file_exists, assert_file_not_exists, assert_dir_exists"
+      },
+      {
+        "name": "jq",
+        "purpose": "JSON extraction in both production code and test assertions (run jq -r '.field' file)"
+      },
+      {
+        "name": "bc",
+        "purpose": "Decimal arithmetic for budget calculations — produces scale=2 string output"
+      },
+      {
+        "name": "mktemp",
+        "purpose": "Per-test tmpdir creation in _common_setup"
+      },
+      {
+        "name": "Docker / Dockerfile.test",
+        "purpose": "Hermetic test execution environment with all deps pre-installed"
+      }
+    ]
+  },
+  "gotchas": [
+    {
+      "issue": "synthesize.sh sets `shopt -s nullglob` at source time. If tests source only a subset of libs (not via _common_setup), this option is absent and glob patterns in config.sh that expect nullglob expansion will return the literal glob string instead of empty.",
+      "solution": "Always call _common_setup which sources all libs in the correct order. Never source a single lib in isolation inside a test."
+    },
+    {
+      "issue": "bc with scale=2 omits the leading zero for values < 1: `echo 'scale=2; 1/3' | bc` returns '.33', not '0.33'. Tests that compare AGENT_BUDGET or remaining budget strings will fail if they expect leading zeros.",
+      "solution": "Write budget assertions as exact string matches against what bc actually produces, or normalize with printf '%.2f'."
+    },
+    {
+      "issue": "run_agents_parallel bakes parent env var values as literals into child scripts at generation time. If you change AGENT_BUDGET after calling run_agents_parallel (e.g., in a hook), child processes already have the old value embedded.",
+      "solution": "Set all env vars before calling run_agents_parallel. Don't rely on dynamic var changes propagating to already-spawned scripts."
+    },
+    {
+      "issue": "@file prompt syntax requires an absolute path. The mock and real claude both treat `@/abs/path` as a file read. Relative paths (`@./prompt.txt`) won't resolve correctly in child script context because the working directory may differ.",
+      "solution": "Always construct @file paths with $TEST_TMPDIR or another absolute base."
+    },
+    {
+      "issue": "Mock dispatch mode extracts agent name via case-insensitive grep against the --json-schema argument basename. Overlapping names (e.g., 'test' and 'test-extended') can cause false routing matches.",
+      "solution": "Use distinct, non-overlapping agent names in dispatch-mode tests. Verify routing via MOCK_CLAUDE_LOG assertions."
+    },
+    {
+      "issue": "check_budget() uses `>=` comparison — when total cost exactly equals TOTAL_BUDGET, the next agent is rejected. This boundary is easy to miss when writing budget exhaustion tests.",
+      "solution": "Test both the 'exactly at budget' case (should fail) and 'one cent under budget' case (should pass) explicitly."
+    },
+    {
+      "issue": "write_artifacts() (merge.sh) never overwrites existing skills, hooks, or subagents. If a test pre-creates a skill file at the target path and then calls write_artifacts(), the new content is silently skipped — no error, no warning.",
+      "solution": "In merge tests that verify content was written, assert_file_not_exists the target path before calling write_artifacts, or use a clean tmpdir."
+    },
+    {
+      "issue": "CLAUDE.md validation requires ≥100 lines. Synthetic fixture content that is 20-30 lines (typical for test brevity) will always fail the minimum-length check, making it impossible to test other validation rules in isolation.",
+      "solution": "Generate fixture CLAUDE.md content with a loop or heredoc that pads to 100+ lines, or use the pre-built fixture from tests/fixtures/."
+    },
+    {
+      "issue": "Phase completion state in state.json persists for the lifetime of a test's tmpdir. Within a single @test body, if you mark a phase complete and then call is_phase_complete again, it returns true — there's no auto-reset between assertions within the same test.",
+      "solution": "If you need to test phase tracking across multiple states in one test, either manipulate state.json directly (jq delete) or use separate run calls with different setups."
+    }
+  ],
+  "domain_terms": [
+    {
+      "term": "envelope",
+      "meaning": "The JSON wrapper that real `claude -p --output-format json` returns: {is_error, total_cost_usd, structured_output}. The mock must return this exact shape."
+    },
+    {
+      "term": "dispatch mode",
+      "meaning": "Mock claude routing mode where the response file is selected per-agent-name from MOCK_CLAUDE_DISPATCH_DIR, enabling multi-agent tests without a single shared response."
+    },
+    {
+      "term": "cost file",
+      "meaning": "Single-line file in $WORK_DIR/costs/ with format `phase|agent_name|cost_usd`. One file per agent run. Aggregated by check_budget() to enforce global spend limit."
+    },
+    {
+      "term": "findings file",
+      "meaning": "$WORK_DIR/findings/<agent_name>.json — the structured JSON output written by run_agent after a successful claude call. Existence of this file is the resumability signal."
+    },
+    {
+      "term": "WORK_DIR",
+      "meaning": "The .ultrainit/ working directory inside the target project. Contains findings/, synthesis/, logs/, costs/, backups/, state.json. In tests, always a subdirectory of TEST_TMPDIR."
+    },
+    {
+      "term": "TARGET_DIR",
+      "meaning": "The project being analyzed. In tests, always a tmpdir subdirectory distinct from WORK_DIR. Agents are instructed to analyze files here."
+    },
+    {
+      "term": "@file syntax",
+      "meaning": "Passing a prompt as `@/path/to/file` instead of inline — avoids shell arg length limits and special character quoting issues. The code checks for the @ prefix and reads the file."
+    },
+    {
+      "term": "phase budget",
+      "meaning": "Fraction of TOTAL_BUDGET allocated to a phase (gather=50%, research=10%, synthesis=30%, validation=10%). Further divided equally among agents in that phase to produce AGENT_BUDGET."
+    },
+    {
+      "term": "_common_setup",
+      "meaning": "The shared setup function in test_helper.bash that every test calls. Creates tmpdir skeleton, sets env defaults, sources all libs. Must be called before any lib function is invoked."
+    },
+    {
+      "term": "nullglob",
+      "meaning": "Bash shell option set by synthesize.sh that makes unmatched globs expand to empty string rather than the literal pattern. Side-effect of sourcing synthesize.sh — affects all subsequent glob expressions in the same shell."
+    }
+  ],
+  "commands": [
+    {
+      "command": "make test-unit",
+      "purpose": "Run only unit tests inside Docker — maps to bats tests/unit/"
+    },
+    {
+      "command": "make test-scripts",
+      "purpose": "Run validator script tests (tests/scripts/*.bats)"
+    },
+    {
+      "command": "make test-all",
+      "purpose": "Run full bats suite (unit + scripts + integration + edge)"
+    },
+    {
+      "command": "make test-image",
+      "purpose": "Build the Docker test image locally (one-time setup)"
+    },
+    {
+      "command": "docker run --rm -v $(pwd):/app ghcr.io/joelbarmettleruzh/ultrainit-test:latest bats tests/unit/agent_run.bats",
+      "purpose": "Run a single test file directly in the pre-built Docker image"
+    }
+  ],
+  "skill_opportunities": [
+    {
+      "name": "add-unit-test",
+      "description": "Scaffold a new .bats unit test file for a lib/*.sh function: generate the setup/teardown boilerplate, mock claude wiring, and skeleton @test blocks with appropriate envelope fixtures.",
+      "workflow_steps": [
+        "Identify the lib/*.sh function(s) to test",
+        "Create tests/unit/<subsystem>.bats with load helpers and _common_setup",
+        "Decide if mock claude is needed (any function calling run_agent or claude -p directly)",
+        "Generate make_claude_envelope fixture for expected structured output",
+        "Write @test blocks for: success path, skip/resume path, error path, budget rejection",
+        "Verify with make test-unit"
+      ]
+    },
+    {
+      "name": "debug-failing-test",
+      "description": "Diagnose a failing bats test by inspecting MOCK_CLAUDE_LOG, agent stderr files, state.json, and cost files in the test tmpdir.",
+      "workflow_steps": [
+        "Run the specific .bats file with bats --tap for verbose output",
+        "Find tmpdir path from test output or add echo $TEST_TMPDIR to setup",
+        "Inspect MOCK_CLAUDE_LOG to verify mock was called with expected args",
+        "Check $WORK_DIR/logs/<agent>.stderr for agent error messages",
+        "Check $WORK_DIR/findings/ to see what was/wasn't written",
+        "Check $WORK_DIR/costs/ to verify budget accounting"
+      ]
+    }
+  ]
+}

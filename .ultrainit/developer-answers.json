@@ -1,0 +1,7 @@
+{
+  "project_purpose": "A shell-native tool that orchestrates multiple Claude Code subagents to deeply analyze any codebase and generate a complete Claude Code configuration (CLAUDE.md, skills, hooks, subagents, commands, MCP servers).",
+  "deployment_target": "As a shell script hosted on github within a release artifact",
+  "never_do": "Write untested code, write code for other platforms than linux (we only support windows using git bash), write tests to test the current behaviour instead of thinking of the actually correct behaviour, write unsafe code, release new tags without consulting with the user first",
+  "common_mistakes": "They should understand our tooling and testing frameworks before contributing, openn up a new issue or discussion before implementing something and opening a pr. They should know that we don't want to grow over claude code and will never support other coding agents configuration setup such as opencode, mistral vibe code cli, etc",
+  "additional_context": "We are not focused on speed but on quality. It is fine when an ultrainit run takes 60+ minutes and costs 100+ dollars, if you want something quick, use the native init command instead"
+}

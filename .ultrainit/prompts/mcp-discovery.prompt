@@ -1,0 +1,16 @@
+Find MCP servers useful for developing this project.
+Project: ultrainit
+Tech stack: bats-core, Docker
+Languages: Bash/Shell, JSON, Markdown
+Deployment: As a shell script hosted on github within a release artifact
+
+Use the official MCP registry API to find servers. Example:
+  WebFetch https://registry.modelcontextprotocol.io/v0.1/servers?limit=10&search=QUERY&version=latest
+
+Search for the key technologies: database names, framework names, etc.
+Do NOT fetch github.com/mcp directly — it returns HTML, not JSON. Use WebSearch for GitHub results instead.
+
+If a WebFetch returns a 403 or error, skip it and move on. Do NOT retry failed URLs.
+
+Always recommend context7 (up-to-date library docs) and playwright (if frontend exists).
+Keep recommendations to 3-8 highly relevant servers.

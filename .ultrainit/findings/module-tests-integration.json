@@ -1,0 +1,272 @@
+{
+  "module_path": "tests/integration/",
+  "purpose": "Phase-level integration tests for ultrainit's gather (Phase 1), synthesize (Phase 4), and resumability logic. Tests exercise real lib functions (gather_evidence, synthesize, run_agent) against a PATH-based mock claude binary, validating multi-agent orchestration, failure tolerance thresholds, phase skipping, and FORCE-rerun behavior — without making any real Claude API calls.",
+  "architecture": {
+    "overview": "Three .bats files, each targeting a distinct concern: gather_phase (8-agent parallel orchestration + failure thresholds), synthesize_phase (two-pass pipeline + pass reuse), and resume (cached findings + state.json skipping). All tests share a common setup/teardown via tests/helpers/test_helper.bash and a PATH-based mock claude binary from tests/helpers/mock_claude.bash. Tests load helpers, source all libs in fixed order, configure mock responses, then call lib functions directly.",
+    "subdirectories": [],
+    "data_flow": "test setup → _common_setup (tmpdir, env vars, source all libs) → setup_mock_claude (writes mock binary, prepends to PATH) → per-test fixture copy / mock response config → call phase function (gather_evidence / synthesize) → mock intercepts claude calls and returns pre-canned JSON envelopes → phase writes findings/synthesis to $WORK_DIR → test asserts on file existence, exit codes, and jq key presence → _common_teardown removes $TEST_TMPDIR"
+  },
+  "key_files": [
+    {
+      "path": "tests/integration/gather_phase.bats",
+      "purpose": "7 tests covering Phase 1 (gather_evidence): all agents succeed, phase skip when complete, FORCE rerun, critical agent failure (identity, structure-scout), non-critical tolerance (1-2 failures), and systemic abort (3+ failures). Uses single-response mock mode.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/integration/synthesize_phase.bats",
+      "purpose": "4 tests covering Phase 4 (synthesize): two-pass pipeline completion, phase skip, Pass 1 output reuse when pre-existing, and claude error propagation. Uses dispatch mock mode keyed by 'docs' and 'tooling' filenames.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/integration/resume.bats",
+      "purpose": "3 tests validating resumability: run_agent skips when findings file exists, gather_evidence skips when state.json marks phase complete, and FORCE=true overrides both. Exercises the core resumability contract.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/helpers/test_helper.bash",
+      "purpose": "Shared setup for all test files. Creates $TEST_TMPDIR, $WORK_DIR, $TARGET_DIR; sets all env vars (budgets, models, flags) before sourcing libs; disables ANSI color codes; sources all 9 libs in fixed order. Provides make_claude_envelope(), _common_teardown(), source_lib(), use_fixture().",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/helpers/mock_claude.bash",
+      "purpose": "Installs a mock claude binary on PATH. Supports single-response mode (MOCK_CLAUDE_RESPONSE), dispatch mode (MOCK_CLAUDE_DISPATCH_DIR/<name>.json), exit code control (MOCK_CLAUDE_EXIT_CODE), and call logging (MOCK_CLAUDE_LOG). Provides create_dispatch_response() and create_dispatch_error() helpers.",
+      "importance": "critical"
+    },
+    {
+      "path": "tests/fixtures/findings/identity.json",
+      "purpose": "Canonical fixture for the identity agent output: project name, languages with percentages, frameworks with versions, monorepo flag, deployment target. Copied into $WORK_DIR/findings/ in synthesize_phase setup.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/fixtures/synthesis/output-docs.json",
+      "purpose": "Pass 1 synthesis fixture. Contains claude_md (root CLAUDE.md content as a string) and subdirectory_claude_mds array. Used as the dispatch response for 'docs' in synthesize_phase tests.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/fixtures/synthesis/output-tooling.json",
+      "purpose": "Pass 2 synthesis fixture. Contains skills (with content), hooks (filename + event + content), subagents, mcp_servers, and settings_hooks. Used as the dispatch response for 'tooling' in synthesize_phase tests.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/fixtures/synthesis/output.json",
+      "purpose": "Final merged synthesis fixture combining Pass 1 + Pass 2. Used to validate merge_synthesis_passes() output shape — specifically that .claude_md, .skills, .hooks, .mcp_servers all coexist.",
+      "importance": "important"
+    },
+    {
+      "path": "tests/fixtures/developer-answers.json",
+      "purpose": "Developer Q&A fixture copied into $WORK_DIR/developer-answers.json during synthesize_phase setup. Required by synthesize()'s context-building step (project_purpose, deployment_target, never_do, common_mistakes, additional_context).",
+      "importance": "reference"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Load → Setup → Mock → Source order",
+      "description": "Every .bats setup() must follow this exact sequence: (1) load test_helper, (2) _common_setup (sets env + sources all libs), (3) load mock_claude, (4) setup_mock_claude (installs mock binary on PATH). Deviating from this order breaks mock interception because libs are sourced before the mock binary is on PATH — but since libs define functions (not run code), calls only happen at test time when the mock is already in place.",
+      "example_files": [
+        "tests/integration/gather_phase.bats",
+        "tests/integration/synthesize_phase.bats",
+        "tests/integration/resume.bats"
+      ]
+    },
+    {
+      "name": "make_claude_envelope() wrapping",
+      "description": "Every fixture file used as a mock response must be wrapped in a Claude response envelope before being written to the mock response path. Call: make_claude_envelope \"$(cat fixture.json)\" \"0.15\" > $MOCK_CLAUDE_RESPONSE. The envelope adds is_error, total_cost_usd, and structured_output fields. Unwrapped fixtures cause silent failures — agent.sh extracts .structured_output and gets null, writing 'null' to findings.",
+      "example_files": [
+        "tests/helpers/test_helper.bash",
+        "tests/integration/synthesize_phase.bats",
+        "tests/integration/gather_phase.bats"
+      ]
+    },
+    {
+      "name": "Precreation for selective failure testing",
+      "description": "To test specific agent failure scenarios, tests pre-copy fixture files for agents that should succeed (bypassing the mock), then configure the mock to return an error. The _precreate_findings() helper (gather_phase.bats) copies fixtures for a named list of agents. Agents with pre-existing findings are skipped by run_agent's resumability check; the failing agent is the only one that calls the mock.",
+      "example_files": [
+        "tests/integration/gather_phase.bats"
+      ]
+    },
+    {
+      "name": "Dispatch mode for multi-agent tests",
+      "description": "When a test exercises a phase that calls multiple agents with different expected outputs (e.g., synthesize), use MOCK_CLAUDE_DISPATCH_DIR. Place per-agent response files as <name>.json. The mock extracts the agent name from the prompt or schema path and serves the matching file. Always set a fallback MOCK_CLAUDE_RESPONSE for agents whose names don't match any dispatch file.",
+      "example_files": [
+        "tests/integration/synthesize_phase.bats",
+        "tests/helpers/mock_claude.bash"
+      ]
+    },
+    {
+      "name": "ULTRAINIT_MAX_RETRIES=1 in synthesis tests",
+      "description": "synthesize.sh has retry logic (default 3 retries) for transient API errors on large-context calls. Integration tests set ULTRAINIT_MAX_RETRIES=1 in setup to prevent retry delays when testing error paths. This env var is documented in CLAUDE.md as a test-friendliness hook. Without it, error-path tests would wait 3× before failing.",
+      "example_files": [
+        "tests/integration/synthesize_phase.bats",
+        "lib/synthesize.sh"
+      ]
+    }
+  ],
+  "conventions": {
+    "naming": "Test files named after the phase they test: gather_phase.bats, synthesize_phase.bats, resume.bats. Test names are full English sentences starting with the function under test (e.g., 'gather_evidence completes with all agents succeeding'). Private helper functions prefixed with underscore (_precreate_findings, _mock_success, _mock_error). Dispatch files named to match agent names: docs.json, tooling.json, identity.json.",
+    "imports": "All .bats files use bats-core 'load' for helpers (load '../helpers/test_helper', load '../helpers/mock_claude'). Lib files sourced via source_lib() helper in test_helper.bash, which resolves paths relative to $PROJECT_ROOT. Never use relative paths in test assertions — always use $WORK_DIR, $TEST_TMPDIR, $PROJECT_ROOT absolute paths.",
+    "error_handling": "Tests use 'run' prefix to capture exit codes without failing the test, then assert_success / assert_failure / assert_output --partial. Direct calls (without 'run') fail the test immediately on non-zero exit. Phase functions return 1 on critical failure, 0 on success or tolerated partial failure. The 3+ failure threshold in gather_evidence is tested by pre-creating exactly 4 findings (below the 5-needed-to-not-abort threshold).",
+    "other": [
+      "teardown() is always a single line: _common_teardown. Never add per-test cleanup logic outside _common_teardown.",
+      "Environment variables must be set BEFORE sourcing libs (test_helper._common_setup lines 29-43). Libs read env vars at source time via defaults like ${FORCE:-false}.",
+      "Color variables (RED, GREEN, etc.) must be exported as empty strings in test_helper. utils.sh only enables colors if stdout is a TTY; the empty-string export overrides the TTY check entirely.",
+      "Budget variables (GATHER_BUDGET, AGENT_BUDGET, etc.) must be computed before calling gather_evidence. gather_phase.bats calls compute_budgets + set_agent_budget in setup; synthesize_phase.bats only calls compute_budgets (synthesis doesn't use AGENT_BUDGET).",
+      "The mock binary handles 'claude auth status' specially — returns a hardcoded loggedIn:true JSON. All other claude invocations are dispatched by the mock mode logic."
+    ]
+  },
+  "dependencies": {
+    "internal": [
+      "lib/utils.sh — mark_phase_complete, is_phase_complete, json_get, log_* functions",
+      "lib/config.sh — compute_budgets, set_agent_budget, check_budget, SCRIPT_DIR resolution",
+      "lib/agent.sh — run_agent, run_agents_parallel, get_failed_agents, diagnose_phase_failure, record_cost",
+      "lib/gather.sh — gather_evidence (Phase 1 orchestration)",
+      "lib/synthesize.sh — synthesize, run_synthesis_pass, merge_synthesis_passes, build_docs_context, build_tooling_context",
+      "lib/ask.sh — ask_developer (sourced but not directly tested in integration tests)",
+      "lib/research.sh — sourced but not directly tested in integration tests",
+      "lib/validate.sh — sourced but not directly tested in integration tests",
+      "lib/merge.sh — sourced but not directly tested in integration tests",
+      "tests/fixtures/ — all agent findings fixtures, synthesis output fixtures, developer-answers.json"
+    ],
+    "external_key": [
+      {
+        "name": "bats-core",
+        "purpose": "Test runner. Provides @test blocks, load, run, assert_success, assert_failure, assert_output. Runs inside Docker via Dockerfile.test."
+      },
+      {
+        "name": "jq",
+        "purpose": "JSON processing in make_claude_envelope(), create_dispatch_response(), and test assertions like 'run jq -e .claude_md output.json'."
+      },
+      {
+        "name": "bash",
+        "purpose": "Shell for test execution. Bats requires bash 4.0+. Tests use bash-specific features (arrays, process substitution, export -f)."
+      },
+      {
+        "name": "mktemp",
+        "purpose": "Creates isolated per-test temp directories in _common_setup. Each test gets a fresh $TEST_TMPDIR."
+      }
+    ]
+  },
+  "domain_terms": [
+    {
+      "term": "envelope",
+      "meaning": "The JSON wrapper around structured output that real claude -p --output-format json produces: {is_error, total_cost_usd, structured_output}. Tests must wrap fixtures in envelopes via make_claude_envelope() or the agent's jq extraction gets null."
+    },
+    {
+      "term": "dispatch mode",
+      "meaning": "Mock claude mode where responses are selected per agent name. MOCK_CLAUDE_DISPATCH_DIR contains <agent-name>.json files. Used when a single test exercises multiple agents with different expected outputs."
+    },
+    {
+      "term": "single response mode",
+      "meaning": "Mock mode where MOCK_CLAUDE_RESPONSE points to one file returned for all claude calls. Used in gather_phase tests where all agents can return the same minimal valid JSON."
+    },
+    {
+      "term": "findings",
+      "meaning": "The per-agent JSON output files written to $WORK_DIR/findings/<name>.json. Their existence is the resumability signal — run_agent skips an agent if its findings file exists."
+    },
+    {
+      "term": "phase completion",
+      "meaning": "A phase is marked complete by writing a timestamp to state.json (mark_phase_complete). is_phase_complete checks this. Integration tests validate that complete phases are skipped and that FORCE=true overrides them."
+    },
+    {
+      "term": "critical agents",
+      "meaning": "identity and structure-scout. If either fails (no findings file after parallel run), gather_evidence aborts the entire pipeline. Tested explicitly in gather_phase.bats."
+    },
+    {
+      "term": "systemic failure",
+      "meaning": "3 or more agents failing in Phase 1. Triggers pipeline abort with diagnose_phase_failure call. Tests create exactly 4 of 8 findings to trigger this threshold."
+    },
+    {
+      "term": "precreation",
+      "meaning": "Copying fixture files into $WORK_DIR/findings/ before a test runs, so those agents appear to have already succeeded. Enables targeted failure testing of specific agents."
+    },
+    {
+      "term": "Pass 1 / Pass 2",
+      "meaning": "The two synthesis passes. Pass 1 (docs) generates CLAUDE.md files; Pass 2 (tooling) generates skills, hooks, subagents. In tests, each pass is matched by a dispatch file named docs.json or tooling.json."
+    },
+    {
+      "term": "WORK_DIR",
+      "meaning": "The .ultrainit/ directory (in tests, $TEST_TMPDIR/workdir). All intermediate state (findings, synthesis, logs, costs, state.json) lives here."
+    }
+  ],
+  "gotchas": [
+    {
+      "issue": "Unwrapped fixtures cause silent null writes. If a fixture is not passed through make_claude_envelope(), agent.sh's jq extraction (.structured_output // .result // .) returns null and writes 'null' to the findings file. The agent appears to succeed but downstream code fails when parsing the findings.",
+      "solution": "Always use make_claude_envelope \"$(cat fixture.json)\" \"cost\" > $MOCK_CLAUDE_RESPONSE when setting up mock responses. Never write raw fixture content directly to the response path."
+    },
+    {
+      "issue": "Env vars must be set before sourcing libs. Libs use ${VAR:-default} at source time in some places. If you source libs first and then set FORCE=true, the function's default may already be captured. test_helper._common_setup exports all vars before sourcing.",
+      "solution": "Follow the load → _common_setup → load mock_claude → setup_mock_claude order. Override env vars in per-test setup after _common_setup, not before."
+    },
+    {
+      "issue": "synthesize.sh sets shopt -s nullglob globally at source time. After sourcing, glob patterns that match nothing expand to empty strings instead of the literal pattern. This can silently break loops that iterate over glob results in other libs sourced before synthesize.sh.",
+      "solution": "Source libs in the documented order (utils → config → agent → gather → ask → research → synthesize → validate → merge). This matches ultrainit.sh's own sourcing order and ensures interactions are visible."
+    },
+    {
+      "issue": "Parallel agents run in subshells that re-source config.sh. If a test modifies AGENT_BUDGET after _common_setup, the subshell's re-source of config.sh may recompute it. gather_phase.bats explicitly calls compute_budgets + set_agent_budget in setup to bake values before parallel execution.",
+      "solution": "Always call compute_budgets and set_agent_budget in test setup before invoking gather_evidence. agent.sh explicitly exports computed values into parallel subshell scripts to prevent re-computation."
+    },
+    {
+      "issue": "Dispatch mode name matching is fragile. The mock extracts agent name from the prompt text or schema filename. If an agent's prompt contains 'docs' or 'tooling' coincidentally, it may match the wrong dispatch file.",
+      "solution": "Always set MOCK_CLAUDE_RESPONSE as a fallback when using dispatch mode (synthesize_phase.bats does this). For gather tests where all agents can return the same output, use single-response mode instead of dispatch."
+    },
+    {
+      "issue": "ULTRAINIT_MAX_RETRIES defaults to 3 in synthesize.sh. Error-path tests in synthesize_phase.bats would wait for 3 retry attempts before failing, making tests slow. This isn't documented in the test file itself.",
+      "solution": "Set export ULTRAINIT_MAX_RETRIES=1 in synthesize_phase setup. This is already done in the file; don't remove it when adding new synthesize tests."
+    },
+    {
+      "issue": "The mock binary handles 'claude auth status' specially. lib/config.sh calls claude auth status to check authentication. The mock detects the 'auth' argument and returns a hardcoded {\"loggedIn\": true} response. If the mock logic changes, config.sh's auth check silently fails and the entire test suite breaks.",
+      "solution": "When modifying mock_claude.bash, preserve the auth status special case. It must be checked before the general response dispatch logic."
+    },
+    {
+      "issue": "gather_phase.bats's systemic failure test pre-creates exactly 4 findings (identity, structure-scout, commands, patterns). The threshold is 3+ failures out of 8 agents. Pre-creating 4 leaves 4 failing — enough to trigger the abort. If the agent count changes, this math must be updated.",
+      "solution": "The test comment documents the threshold (3+ failures = abort). When adding new core agents to gather.sh, review the precreation count in the systemic failure test."
+    }
+  ],
+  "commands": [
+    {
+      "command": "make test-all",
+      "purpose": "Run the complete bats test suite inside Docker (unit + integration + edge + scripts)"
+    },
+    {
+      "command": "make test-image",
+      "purpose": "Build the Docker test image locally (required before running tests)"
+    },
+    {
+      "command": "docker run --rm -v $(pwd):/src ghcr.io/joelbarmettleruzh/ultrainit-test:latest bats tests/integration/",
+      "purpose": "Run only integration tests inside the pre-built Docker container"
+    },
+    {
+      "command": "docker run --rm -v $(pwd):/src ghcr.io/joelbarmettleruzh/ultrainit-test:latest bats tests/integration/gather_phase.bats",
+      "purpose": "Run only gather phase integration tests"
+    },
+    {
+      "command": "MOCK_CLAUDE_LOG=/tmp/calls.log bats tests/integration/synthesize_phase.bats",
+      "purpose": "Run synthesize tests with call logging to inspect mock invocations"
+    }
+  ],
+  "skill_opportunities": [
+    {
+      "name": "add-integration-test",
+      "description": "Guide adding a new integration test for a phase function: scaffold the .bats file with correct setup/teardown, configure the right mock mode, pre-populate required fixtures, and wire assertions to findings file existence + state.json.",
+      "workflow_steps": [
+        "Identify which phase function to test and whether it needs dispatch or single-response mock mode",
+        "Copy setup/teardown skeleton from an existing .bats file",
+        "Set ULTRAINIT_MAX_RETRIES=1 if testing synthesize",
+        "Pre-copy required fixtures from tests/fixtures/findings/ into $WORK_DIR/findings/",
+        "Wrap fixture content with make_claude_envelope() and write to mock response path",
+        "Write @test blocks asserting on findings file existence, is_phase_complete, and key jq fields",
+        "Run the test inside Docker to verify"
+      ]
+    },
+    {
+      "name": "add-agent-fixture",
+      "description": "Create a new agent fixture file in tests/fixtures/findings/ that matches the agent's JSON schema, suitable for use in precreation and mock responses.",
+      "workflow_steps": [
+        "Read the corresponding schema from schemas/<agent-name>.json",
+        "Create a minimal but realistic JSON object satisfying all required fields",
+        "Save to tests/fixtures/findings/<agent-name>.json",
+        "Verify the fixture is valid against the schema with jq",
+        "Update any integration tests that iterate over all fixtures"
+      ]
+    }
+  ]
+}

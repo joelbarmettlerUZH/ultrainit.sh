@@ -1,0 +1,63 @@
+{
+  "tools": [
+    {
+      "name": "bash -n (shell syntax check)",
+      "config_path": "Makefile (check target), .github/workflows/test.yml",
+      "purpose": "Validates shell script syntax across ultrainit.sh and all lib/*.sh files without executing them",
+      "enforced_in_ci": true,
+      "has_pre_commit": false,
+      "key_rules": [
+        "find . -name '*.sh' -not -path './test-repos/*' | xargs bash -n — all shell files must parse cleanly"
+      ]
+    },
+    {
+      "name": "jq (JSON schema validation)",
+      "config_path": ".github/workflows/test.yml",
+      "purpose": "Validates all schemas/*.json files are well-formed JSON",
+      "enforced_in_ci": true,
+      "has_pre_commit": false,
+      "key_rules": [
+        "jq empty on every file in schemas/ — malformed JSON is a CI failure"
+      ]
+    },
+    {
+      "name": "bats-core (Bash Automated Testing System)",
+      "config_path": "Dockerfile.test, Makefile",
+      "purpose": "Unit, integration, and edge-case test suite for all bash functions and scripts; no real Claude calls (mock binary intercepts all claude invocations)",
+      "enforced_in_ci": true,
+      "has_pre_commit": false,
+      "key_rules": [
+        "Runs inside Docker (ghcr.io/joelbarmettleruzh/ultrainit-test:latest) for isolation",
+        "make test-unit / test-scripts / test-edge / test-all targets",
+        "Mock claude binary must be used — no real API calls in tests",
+        "bats-support, bats-assert, bats-file helper libraries installed at v1.11.1"
+      ]
+    },
+    {
+      "name": "validate-skill.sh (custom skill validator)",
+      "config_path": "scripts/validate-skill.sh",
+      "purpose": "Validates generated Claude Code skill files: frontmatter format, kebab-case naming, required fields (name, description), codebase-specific file references, verification section, no generic phrases",
+      "enforced_in_ci": false,
+      "has_pre_commit": false,
+      "key_rules": [
+        "Frontmatter must include name (kebab-case) and description with trigger phrases and negative scope",
+        "Minimum 3 codebase-specific file references required",
+        "Must contain a verification/testing section",
+        "No generic programming phrases allowed",
+        "No angle-bracket placeholders in frontmatter"
+      ]
+    },
+    {
+      "name": "validate-subagent.sh (custom subagent validator)",
+      "config_path": "scripts/validate-subagent.sh",
+      "purpose": "Validates generated Claude Code subagent files: frontmatter, name/description fields with trigger phrases, tool scoping, minimum codebase-specific references",
+      "enforced_in_ci": false,
+      "has_pre_commit": false,
+      "key_rules": [
+        "Frontmatter must have name and description with trigger phrases",
+        "Tool scoping must match stated purpose",
+        "Minimum 3 codebase-specific file references"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "ultrainit",
+  "description": "A shell-native tool that orchestrates multiple Claude Code subagents to deeply analyze any codebase and generate a complete Claude Code configuration (CLAUDE.md, skills, hooks, subagents, commands, MCP servers).",
+  "languages": [
+    {
+      "name": "Bash/Shell",
+      "percentage": 75
+    },
+    {
+      "name": "JSON",
+      "percentage": 15
+    },
+    {
+      "name": "Markdown",
+      "percentage": 10
+    }
+  ],
+  "frameworks": [
+    {
+      "name": "bats-core",
+      "version": "latest (via Docker)"
+    },
+    {
+      "name": "Docker",
+      "version": "unspecified (Dockerfile.test)"
+    }
+  ],
+  "monorepo": false,
+  "packages": [],
+  "deployment": "GitHub Releases (single-file bundled ultrainit.sh via curl-pipe-bash); Docker image ghcr.io/joelbarmettleruzh/ultrainit-test for test runner",
+  "existing_ai_config": [
+    {
+      "file": "CLAUDE.md",
+      "type": "Claude Code project instructions"
+    },
+    {
+      "file": ".claude/settings.json",
+      "type": "Claude Code settings (attribution config)"
+    }
+  ]
+}
