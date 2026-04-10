@@ -15,6 +15,9 @@ export AGENT_MODEL="${ULTRAINIT_MODEL:-sonnet}"
 export SYNTH_MODEL="${SYNTH_MODEL:-sonnet[1m]}"
 export TOTAL_BUDGET="${ULTRAINIT_BUDGET:-100.00}"
 
+# Allow large output from synthesis passes (default 32k is too small)
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-128000}"
+
 # ── Budget allocation ───────────────────────────────────────────
 #
 # The total budget is split across phases:
@@ -278,11 +281,13 @@ setup_work_dir() {
     WORK_DIR="${target_dir}/.ultrainit"
     export WORK_DIR
 
-    mkdir -p "$WORK_DIR"/{findings/modules,synthesis/skills,synthesis/hooks,synthesis/subagents,logs,backups,costs}
+    mkdir -p "$WORK_DIR"/{findings/modules,synthesis/skills,synthesis/hooks,synthesis/subagents,logs,backups,costs,prompts}
 
     # Add .ultrainit/ to .gitignore if not present
     if [[ -f "${target_dir}/.gitignore" ]]; then
         if ! grep -q '\.ultrainit' "${target_dir}/.gitignore" 2>/dev/null; then
+            # Ensure file ends with a newline before appending
+            [[ -s "${target_dir}/.gitignore" && "$(tail -c1 "${target_dir}/.gitignore")" != "" ]] && echo >> "${target_dir}/.gitignore"
             echo '.ultrainit/' >> "${target_dir}/.gitignore"
         fi
     else

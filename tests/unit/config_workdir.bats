@@ -69,6 +69,20 @@ teardown() {
     [[ "$count" -eq 1 ]]
 }
 
+@test "setup_work_dir appends to .gitignore missing trailing newline" {
+    local target="$TEST_TMPDIR/project"
+    mkdir -p "$target"
+    # Write a .gitignore without trailing newline (printf, not echo)
+    printf '*.pyc' > "$target/.gitignore"
+    setup_work_dir "$target"
+
+    # .ultrainit/ should be on its own line, not merged with *.pyc
+    run grep -c '^\.ultrainit/$' "$target/.gitignore"
+    assert_output "1"
+    run grep -c '^\*\.pyc$' "$target/.gitignore"
+    assert_output "1"
+}
+
 @test "setup_work_dir does not overwrite existing state.json" {
     local target="$TEST_TMPDIR/project"
     mkdir -p "$target/.ultrainit"

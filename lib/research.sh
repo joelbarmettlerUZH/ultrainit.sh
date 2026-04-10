@@ -57,9 +57,10 @@ run_research() {
     export AGENT_PHASE="research"
     local research_calls=()
 
-    # Domain researcher
-    research_calls+=("run_agent domain-research \
-        'Research the domain and tech stack for this project.
+    # Domain researcher — write prompt to file to avoid shell quoting issues
+    # with special characters (apostrophes, parentheses, etc.) in developer answers
+    cat > "$WORK_DIR/prompts/domain-research.prompt" <<EOF
+Research the domain and tech stack for this project.
 Project: ${project_name:-unknown} — ${project_purpose:-unknown purpose}
 Languages: ${languages:-unknown}
 Tech stack: ${tech_stack}
@@ -72,15 +73,19 @@ Research:
 3. Common pitfalls developers encounter with this exact tech stack combination
 4. Architectural patterns common in this type of application
 
-Focus on version-specific, non-obvious information. Skip anything generic.' \
+Focus on version-specific, non-obvious information. Skip anything generic.
+EOF
+
+    research_calls+=("run_agent domain-research \
+        '@$WORK_DIR/prompts/domain-research.prompt' \
         '$schemas/domain-research.json' \
         'Read,WebSearch,WebFetch' \
         $AGENT_MODEL")
 
     # MCP discoverer (skip if --skip-mcp)
     if [[ "$SKIP_MCP" != "true" ]]; then
-        research_calls+=("run_agent mcp-discovery \
-            'Find MCP servers useful for developing this project.
+        cat > "$WORK_DIR/prompts/mcp-discovery.prompt" <<EOF
+Find MCP servers useful for developing this project.
 Project: ${project_name:-unknown}
 Tech stack: ${tech_stack}
 Languages: ${languages:-unknown}
@@ -95,7 +100,11 @@ Do NOT fetch github.com/mcp directly — it returns HTML, not JSON. Use WebSearc
 If a WebFetch returns a 403 or error, skip it and move on. Do NOT retry failed URLs.
 
 Always recommend context7 (up-to-date library docs) and playwright (if frontend exists).
-Keep recommendations to 3-8 highly relevant servers.' \
+Keep recommendations to 3-8 highly relevant servers.
+EOF
+
+        research_calls+=("run_agent mcp-discovery \
+            '@$WORK_DIR/prompts/mcp-discovery.prompt' \
             '$schemas/mcp-recommendations.json' \
             'Read,WebSearch,WebFetch' \
             $AGENT_MODEL")
