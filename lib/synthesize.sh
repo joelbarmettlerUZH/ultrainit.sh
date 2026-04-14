@@ -336,11 +336,15 @@ PROMPT_FOOTER
 
         raw_output=$(cat "$output_tmpfile")
 
+        # claude --output-format json returns a JSON array; extract the last element
+        local result_envelope
+        result_envelope=$(echo "$raw_output" | jq 'if type == "array" then .[-1] else . end' 2>/dev/null)
+
         # Check for API-level errors
         local is_error
-        is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
+        is_error=$(echo "$result_envelope" | jq -r '.is_error // false' 2>/dev/null)
         local error_msg
-        error_msg=$(echo "$raw_output" | jq -r '
+        error_msg=$(echo "$result_envelope" | jq -r '
             (if (.errors // [] | length) > 0 then (.errors | join("; "))
              elif .result then .result
              else "" end)
@@ -362,7 +366,7 @@ PROMPT_FOOTER
 
     # Extract structured output
     mkdir -p "$WORK_DIR/synthesis"
-    echo "$raw_output" | jq '.structured_output // .result // .' \
+    echo "$result_envelope" | jq '.structured_output // .result // .' \
         > "$WORK_DIR/synthesis/output-${pass_name}.json" 2>/dev/null
 
     if ! jq -e 'type == "object"' "$WORK_DIR/synthesis/output-${pass_name}.json" >/dev/null 2>&1; then
@@ -373,7 +377,7 @@ PROMPT_FOOTER
 
     # Track cost
     local cost
-    cost=$(echo "$raw_output" | jq -r '.total_cost_usd // 0' 2>/dev/null)
+    cost=$(echo "$result_envelope" | jq -r '.total_cost_usd // 0' 2>/dev/null)
     record_cost "synthesize" "pass-${pass_name}" "$cost"
 
     log_success "Pass '$pass_name' complete (cost: \$$cost)"
