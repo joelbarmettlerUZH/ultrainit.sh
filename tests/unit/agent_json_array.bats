@@ -1,13 +1,9 @@
 #!/usr/bin/env bats
-# Regression tests for JSON array output parsing.
+# Regression tests for array-wrapped JSON response handling.
 #
-# claude --output-format json returns a JSON array of conversation messages,
-# not a single object. The result envelope (is_error, total_cost_usd,
-# structured_output) is the last element of the array.
-#
-# Previously, jq expressions like `.is_error` were applied to the top-level
-# array, causing "Cannot index array with string" errors that silently killed
-# agent subprocesses under set -euo pipefail.
+# Some claude versions wrap the result object in a JSON array of conversation
+# messages. These tests verify that run_agent correctly normalizes both
+# array-wrapped and plain object responses.
 
 setup() {
     load '../helpers/test_helper'

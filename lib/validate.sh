@@ -318,7 +318,7 @@ Rules:
             --max-budget-usd 2.00 \
             2>>"$stderr_file") || true
 
-        # claude --output-format json returns a JSON array; extract the last element
+        # Guard: normalize array-wrapped responses to a plain object
         local result_envelope
         result_envelope=$(echo "$raw_output" | jq 'if type == "array" then .[-1] else . end' 2>/dev/null)
 

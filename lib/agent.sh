@@ -122,9 +122,8 @@ run_agent() {
         return 1
     fi
 
-    # claude --output-format json returns a JSON array of conversation messages.
-    # The final element contains the result envelope with cost, structured_output, etc.
-    # Extract it once so downstream jq expressions can use simple dot-access.
+    # Guard: some claude versions wrap the result in a JSON array instead of
+    # returning a single object. Normalize to a plain object either way.
     local result_envelope
     result_envelope=$(echo "$raw_output" | jq 'if type == "array" then .[-1] else . end' 2>/dev/null)
 
