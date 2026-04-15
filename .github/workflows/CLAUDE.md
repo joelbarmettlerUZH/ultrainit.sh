@@ -8,7 +8,7 @@ Three workflow files, each with a distinct trigger and responsibility.
 |---|---|---|
 | `test.yml` | push to main, PRs | Shell syntax check → bats test suite |
 | `docker-test-image.yml` | `Dockerfile.test` changed on main | Rebuild and push test image to GHCR |
-| `release.yml` | semver tag (`v*`) push | Bundle + publish GitHub Release |
+| `release.yml` | push to main, workflow_dispatch | Auto-tag (patch/minor/major via PR label) + bundle + publish GitHub Release |
 
 ## test.yml
 
@@ -32,20 +32,32 @@ Requires `packages: write` permission.
 
 ## release.yml
 
-Fires on `v*` tag push. Steps:
-1. Extract tag from `GITHUB_REF`, validate against `^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$` (exits 1 if invalid)
-2. `bash bundle.sh > dist/ultrainit.sh`
-3. `bash -n dist/ultrainit.sh` (syntax-check the bundle before publishing)
-4. `softprops/action-gh-release@v2` uploads `dist/ultrainit.sh` as the release asset
+Fires on every push to `main` and on manual `workflow_dispatch`. Self-contained: computes the next version, creates and pushes the tag, bundles, and publishes in a single job.
 
-Requires `contents: write` permission. Uses only `GITHUB_TOKEN` — no external secrets.
+Steps:
+1. **Determine bump**: on `workflow_dispatch`, uses the `bump` input (`patch`/`minor`/`major`). On push to main, reads the merged PR's labels via `gh api repos/{repo}/commits/{sha}/pulls`:
+   - `release:major` → major bump
+   - `release:minor` → minor bump
+   - `release:skip` → no release (whole job short-circuits)
+   - anything else (including `release:patch` or no label) → patch bump
+2. **Compute version**: reads highest `vX.Y.Z` tag via `git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname`, increments per bump type. Defaults to `v0.0.0` if no tags exist.
+3. **Create and push tag** as `github-actions[bot]` using the default `GITHUB_TOKEN`.
+4. `bash bundle.sh > dist/ultrainit.sh`
+5. `bash -n dist/ultrainit.sh` (syntax-check the bundle before publishing).
+6. `softprops/action-gh-release@v2` uploads `dist/ultrainit.sh` with `tag_name` set to the computed tag.
 
-**Never push a tag without consulting the user first.** This is an explicit project rule.
+Requires `contents: write` and `pull-requests: read`. Uses only `GITHUB_TOKEN` — no external secrets.
+
+**Why tag and release are in the same workflow**: a tag pushed using `GITHUB_TOKEN` does NOT trigger other workflows (GitHub blocks this to prevent recursion). Splitting tag-push and release into separate workflows would silently fail. If you ever split them, you must push the tag with a PAT stored as a secret.
+
+**Direct pushes to main (not via PR) default to patch.** The label lookup returns empty, which falls through to patch. If you want to skip a direct push, tag it manually with `release:skip` semantics — or commit an empty change with `[skip ci]` if `test.yml` should also skip (release.yml does not honor `[skip ci]`).
+
+**The `release:patch` label is redundant but harmless** — patch is already the default for unlabeled PRs. Labels exist so authors can make intent explicit in the PR UI.
 
 ## Conventions
 
 - All actions pinned to major version tags (`actions/checkout@v4`, `softprops/action-gh-release@v2`), not SHAs. For supply-chain-sensitive steps (release.yml has `contents:write`), consider pinning to full SHAs.
-- No caching, no matrix, no workflow_dispatch, no concurrency groups.
+- No caching, no matrix, no concurrency groups. `release.yml` uses `workflow_dispatch` for manual minor/major bumps.
 - `bats-support`, `bats-assert`, and `bats-file` in `Dockerfile.test` are installed from HEAD with no version pin — a breaking upstream change would silently break all tests at the next image rebuild. Pin to specific tags.
 - `bundle.sh` must never write to stdout except the bundle content — the release calls `bash bundle.sh > dist/ultrainit.sh`, so any spurious stdout output corrupts the bundle.
 
@@ -53,6 +65,8 @@ Requires `contents: write` permission. Uses only `GITHUB_TOKEN` — no external 
 
 If GHCR is slow or the test image doesn't exist yet (e.g., fresh fork), the test job will hang or fail on image pull. Ensure `docker-test-image.yml` has run at least once before running `test.yml` on a new fork.
 
-The `release.yml` exports `VERSION=$TAG` but no downstream step currently uses it. If a step needs version embedding (e.g., `ultrainit --version`), pass `VERSION=$VERSION bash bundle.sh > dist/ultrainit.sh`.
+`release.yml` does not embed the version into the bundle. If `ultrainit --version` is ever needed, pass `VERSION=${{ steps.version.outputs.tag }} bash bundle.sh > dist/ultrainit.sh` in the bundle step.
+
+Every merge to main produces a release. For PRs that shouldn't ship a release (docs-only, CI-only, test fixes), apply the `release:skip` label before merging.
 
 `bats tests/integration/` always shows a green step in CI even when tests fail (`|| true`). This is intentional during development. Remove `|| true` once integration coverage stabilizes.

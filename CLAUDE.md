@@ -185,6 +185,21 @@ bash bundle.sh > dist/ultrainit.sh && chmod +x dist/ultrainit.sh
 
 The bundle self-extracts to a temp directory at runtime. `bundle.sh` embeds all `lib/`, `prompts/`, `schemas/`, and `scripts/` as heredoc blocks with `__EOF_LIB_<name>__` delimiters. The delimiter collision risk is low but real: if any embedded file contains a line that exactly matches the delimiter, the heredoc terminates early. Before releasing, run `grep '__EOF_LIB_' lib/*.sh` to check for conflicts.
 
+### Releasing
+
+Releases are fully automated by `.github/workflows/release.yml`. Every merge to `main` cuts a new GitHub Release with a fresh `vX.Y.Z` tag and an updated `dist/ultrainit.sh` asset. Do **not** create or push tags manually — the workflow owns tagging.
+
+Bump type is chosen per PR via label (set before merging):
+
+| Label | Effect on merge |
+|---|---|
+| (none) or `release:patch` | Patch bump (e.g. `v1.5.2` → `v1.5.3`) |
+| `release:minor` | Minor bump (e.g. `v1.5.2` → `v1.6.0`) |
+| `release:major` | Major bump (e.g. `v1.5.2` → `v2.0.0`) |
+| `release:skip` | No release published |
+
+For retroactive minor/major bumps (the merged PR was patch-labeled but deserves a minor/major), use the **Run workflow** button on the Actions → Release page and pick the desired bump. This creates an additional tag on top of the already-published patch release — both releases will coexist, with the higher semver becoming "latest."
+
 ### Testing
 
 All tests run inside Docker using the pre-built image. No real Claude calls are made.
@@ -248,7 +263,7 @@ When updating an existing schema, add new fields as **optional** (not in `requir
 | `scripts/validate-skill.sh` | Enforces skill quality rules used in Phase 5 | Update `tests/scripts/validate_skill.bats` alongside any rule changes |
 | `schemas/*.json` | Schema changes break structured output parsing for dependent agents — silently produces empty findings | Add fields as optional; update `tests/fixtures/findings/` fixture; run `make test-all` |
 | `.github/workflows/*.yml` | CI/CD pipeline — incorrect edits break releases, test runs, or Docker image publishing | Test in a feature branch first |
-| `bundle.sh` | Release bundling — errors ship a broken release artifact | Run `make test-all` and `bash -n dist/ultrainit.sh` before pushing a tag |
+| `bundle.sh` | Release bundling — errors ship a broken release artifact on every merge to main | Run `make test-all` and `bash -n dist/ultrainit.sh` locally before merging; use `release:skip` label to block a release |
 | `Dockerfile.test` | Changes affect all CI test runs and the published GHCR image | Build locally with `make test-image` before committing |
 | `tests/fixtures/**/*.json` | Test correctness depends on fixture accuracy — hand-crafted wrong values cause tests to pass against a fantasy | Capture real `claude -p --output-format json` output to update; never hand-craft values |
 | `.gitignore` | Removing `.ultrainit/` would commit intermediate findings including sensitive developer answers | Append with `echo 'pattern' >> .gitignore`; never rewrite |
