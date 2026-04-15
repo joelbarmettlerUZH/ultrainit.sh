@@ -122,13 +122,18 @@ run_agent() {
         return 1
     fi
 
+    # Guard: some claude versions wrap the result in a JSON array instead of
+    # returning a single object. Normalize to a plain object either way.
+    local result_envelope
+    result_envelope=$(echo "$raw_output" | jq 'if type == "array" then .[-1] else . end' 2>/dev/null)
+
     # Check for API-level errors in the response envelope
     local is_error
-    is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
+    is_error=$(echo "$result_envelope" | jq -r '.is_error // false' 2>/dev/null)
     if [[ "$is_error" == "true" ]]; then
         # Extract the most useful error message from the response
         local error_msg
-        error_msg=$(echo "$raw_output" | jq -r '
+        error_msg=$(echo "$result_envelope" | jq -r '
             (if (.errors // [] | length) > 0 then (.errors | join("; "))
              elif .result then .result
              else "unknown error" end)
@@ -143,12 +148,12 @@ run_agent() {
 
     # Track cost
     local cost
-    cost=$(echo "$raw_output" | jq -r '.total_cost_usd // 0' 2>/dev/null)
+    cost=$(echo "$result_envelope" | jq -r '.total_cost_usd // 0' 2>/dev/null)
     record_cost "$phase" "$name" "$cost"
 
     # Extract structured output from claude response
     # With --json-schema, output is in .structured_output; without, in .result
-    echo "$raw_output" | jq '.structured_output // .result // .' > "$output_file" 2>/dev/null
+    echo "$result_envelope" | jq '.structured_output // .result // .' > "$output_file" 2>/dev/null
 
     # Validate we got valid JSON (structured_output should be an object, not a string)
     if ! jq -e 'type == "object" or type == "array"' "$output_file" >/dev/null 2>&1; then

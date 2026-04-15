@@ -318,16 +318,20 @@ Rules:
             --max-budget-usd 2.00 \
             2>>"$stderr_file") || true
 
+        # Guard: normalize array-wrapped responses to a plain object
+        local result_envelope
+        result_envelope=$(echo "$raw_output" | jq 'if type == "array" then .[-1] else . end' 2>/dev/null)
+
         local rev_cost
-        rev_cost=$(echo "$raw_output" | jq -r '.total_cost_usd // 0' 2>/dev/null)
+        rev_cost=$(echo "$result_envelope" | jq -r '.total_cost_usd // 0' 2>/dev/null)
         record_cost "validate" "revision-skills" "$rev_cost"
 
         local is_error
-        is_error=$(echo "$raw_output" | jq -r '.is_error // false' 2>/dev/null)
+        is_error=$(echo "$result_envelope" | jq -r '.is_error // false' 2>/dev/null)
 
         if [[ "$is_error" != "true" ]] && [[ -n "$raw_output" ]]; then
             local revised_skills
-            revised_skills=$(echo "$raw_output" | jq '.structured_output // .result // .' 2>/dev/null)
+            revised_skills=$(echo "$result_envelope" | jq '.structured_output // .result // .' 2>/dev/null)
 
             if echo "$revised_skills" | jq -e '.skills | length > 0' >/dev/null 2>&1; then
                 # Patch each fixed skill back into output.json

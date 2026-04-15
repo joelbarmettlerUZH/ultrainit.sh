@@ -87,3 +87,16 @@ make_claude_envelope() {
         --arg err "$is_error" \
         '{is_error: ($err == "true"), total_cost_usd: ($cost | tonumber), structured_output: .}'
 }
+
+# Create a response in the real `claude --output-format json` format: a JSON
+# array of conversation messages where the last element is the result envelope.
+# Usage: make_claude_array_envelope '{"key":"val"}' [cost] [is_error]
+make_claude_array_envelope() {
+    local structured_output="${1:-\{\}}"
+    local cost="${2:-0.15}"
+    local is_error="${3:-false}"
+    local envelope
+    envelope=$(make_claude_envelope "$structured_output" "$cost" "$is_error")
+    jq -n --argjson env "$envelope" \
+        '[{"type":"system","subtype":"init","cwd":"/tmp/test","session_id":"test-session"}, {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"analyzing..."}]}}, ($env + {type:"result","terminal_reason":"completed"})]'
+}
