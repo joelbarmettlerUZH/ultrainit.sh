@@ -1,7 +1,9 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -18,10 +20,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Determine bump type
         id: bump
@@ -33,7 +37,8 @@ jobs:
             exit 0
           fi
 
-          LABELS=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          LABELS=$(gh api "repos/${{ github.repository }}/commits/$SHA/pulls" \
             --jq '.[0].labels[].name' 2>/dev/null || echo "")
 
           if echo "$LABELS" | grep -qx 'release:skip'; then

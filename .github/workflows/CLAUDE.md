@@ -8,7 +8,7 @@ Three workflow files, each with a distinct trigger and responsibility.
 |---|---|---|
 | `test.yml` | push to main, PRs | Shell syntax check → bats test suite |
 | `docker-test-image.yml` | `Dockerfile.test` changed on main | Rebuild and push test image to GHCR |
-| `release.yml` | push to main, workflow_dispatch | Auto-tag (patch/minor/major via PR label) + bundle + publish GitHub Release |
+| `release.yml` | `Test` workflow success on main, workflow_dispatch | Auto-tag (patch/minor/major via PR label) + bundle + publish GitHub Release |
 
 ## test.yml
 
@@ -32,7 +32,9 @@ Requires `packages: write` permission.
 
 ## release.yml
 
-Fires on every push to `main` and on manual `workflow_dispatch`. Self-contained: computes the next version, creates and pushes the tag, bundles, and publishes in a single job.
+Fires via `workflow_run` after `test.yml` completes on `main`, and on manual `workflow_dispatch`. The job guards with `if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'` so failed test runs don't publish. Self-contained: computes the next version, creates and pushes the tag, bundles, and publishes in a single job.
+
+`workflow_run` fires on the default branch at the time the triggering workflow completed; `github.sha` does NOT point at the commit being released. The checkout and label lookup both use `github.event.workflow_run.head_sha` (falling back to `github.sha` on manual dispatch) to operate on the right commit.
 
 Steps:
 1. **Determine bump**: on `workflow_dispatch`, uses the `bump` input (`patch`/`minor`/`major`). On push to main, reads the merged PR's labels via `gh api repos/{repo}/commits/{sha}/pulls`:
